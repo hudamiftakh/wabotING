@@ -51,11 +51,13 @@ function decodeOAuthState($state)
     }
 
     $decoded = base64_decode(strtr($state, '-_', '+/'), true);
-    if (!$decoded || strpos($decoded, '.') === false) {
+    $separatorPos = strrpos($decoded ?: '', '.');
+    if (!$decoded || $separatorPos === false) {
         return null;
     }
 
-    [$json, $sig] = explode('.', $decoded, 2);
+    $json = substr($decoded, 0, $separatorPos);
+    $sig = substr($decoded, $separatorPos + 1);
     $expectedSig = hash_hmac('sha256', $json, IG_APP_SECRET);
     if (!hash_equals($expectedSig, $sig)) {
         return null;
@@ -70,6 +72,7 @@ function decodeOAuthState($state)
 }
 
 $configuredRedirectUri = normalizeRedirectUri(IG_REDIRECT_URI);
+$oauthDebugVersion = '2026-05-30-state-v3';
 
 // ========================================
 // CEK ERROR DARI INSTAGRAM
@@ -94,8 +97,9 @@ if ($error) {
 // STEP 1: JIKA BELUM ADA CODE → REDIRECT KE INSTAGRAM
 // ========================================
 $code = $_GET['code'] ?? null;
+$isDebug = isset($_GET['debug_oauth']);
 
-if (!$code) {
+if (!$code || $isDebug) {
     $state = encodeOAuthState($configuredRedirectUri);
 
     // Buat URL authorization menggunakan Instagram Login
@@ -118,7 +122,25 @@ if (!$code) {
         'url'          => $authUrl,
         'redirect_uri' => $configuredRedirectUri,
         'state'        => $state,
+        'debug_version' => $oauthDebugVersion,
     ]);
+
+    if ($isDebug) {
+        die("
+            <link rel='stylesheet' href='assets/style.css'>
+            <div class='container' style='margin-top:50px'>
+                <div class='card'>
+                    <h2>OAuth Debug</h2>
+                    <p><strong>Version:</strong> " . htmlspecialchars($oauthDebugVersion) . "</p>
+                    <p><strong>Redirect URI:</strong> <code>" . htmlspecialchars($configuredRedirectUri) . "</code></p>
+                    <p><strong>Authorize URL:</strong></p>
+                    <div class='code-block' style='font-size:12px; background:#f4f4f4; padding:10px; border-radius:5px; word-break:break-all;'>" . htmlspecialchars($authUrl) . "</div>
+                    <a href='" . htmlspecialchars($authUrl) . "' class='btn btn-primary' style='margin-top:16px'>Mulai OAuth dari URL ini</a>
+                </div>
+            </div>
+        ");
+    }
+
     header('Location: ' . $authUrl);
     exit;
 }
@@ -206,7 +228,10 @@ if (isset($tokenResponse['error_type']) || isset($tokenResponse['error'])) {
                 <p style='margin:12px 0; color:var(--danger)'>$errMsg</p>
                 <div class='code-block' style='font-size:12px; background:#f4f4f4; padding:10px; border-radius:5px;'>
                     <strong>DEBUG INFO:</strong><br>
+                    <strong>App Debug Version:</strong> " . htmlspecialchars($oauthDebugVersion) . "<br>
                     <strong>Sent Redirect URI:</strong> " . htmlspecialchars($tokenRedirectUri) . "<br>
+                    <strong>Received State:</strong> " . htmlspecialchars($state) . "<br>
+                    <strong>State Valid:</strong> " . ($statePayload ? 'yes' : 'no') . "<br>
                     <strong>Sent Client ID:</strong> " . htmlspecialchars(IG_APP_ID) . "<br>
                     <strong>Response:</strong><br>" . htmlspecialchars(json_encode($tokenResponse, JSON_PRETTY_PRINT)) . "
                 </div>
