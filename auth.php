@@ -95,7 +95,7 @@ $postData = [
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, IG_TOKEN_URL);
 curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData)); // Gunakan url-encoded standar
+curl_setopt($ch, CURLOPT_POSTFIELDS, $postData); // Gunakan multipart/form-data (Wajib untuk API Instagram direct)
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 $response = curl_exec($ch);
