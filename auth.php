@@ -26,13 +26,47 @@
 
 require_once __DIR__ . '/config.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 function normalizeRedirectUri($uri)
 {
     return rtrim(trim($uri), '/');
+}
+
+function encodeOAuthState($redirectUri)
+{
+    $payload = [
+        'redirect_uri' => $redirectUri,
+        'nonce'        => bin2hex(random_bytes(12)),
+        'created_at'   => time(),
+    ];
+    $json = json_encode($payload, JSON_UNESCAPED_SLASHES);
+    $sig = hash_hmac('sha256', $json, IG_APP_SECRET);
+
+    return rtrim(strtr(base64_encode($json . '.' . $sig), '+/', '-_'), '=');
+}
+
+function decodeOAuthState($state)
+{
+    if (!$state) {
+        return null;
+    }
+
+    $decoded = base64_decode(strtr($state, '-_', '+/'), true);
+    if (!$decoded || strpos($decoded, '.') === false) {
+        return null;
+    }
+
+    [$json, $sig] = explode('.', $decoded, 2);
+    $expectedSig = hash_hmac('sha256', $json, IG_APP_SECRET);
+    if (!hash_equals($expectedSig, $sig)) {
+        return null;
+    }
+
+    $payload = json_decode($json, true);
+    if (!is_array($payload) || empty($payload['redirect_uri'])) {
+        return null;
+    }
+
+    return $payload;
 }
 
 $configuredRedirectUri = normalizeRedirectUri(IG_REDIRECT_URI);
@@ -62,11 +96,7 @@ if ($error) {
 $code = $_GET['code'] ?? null;
 
 if (!$code) {
-    $state = bin2hex(random_bytes(16));
-    $_SESSION['ig_oauth_states'][$state] = [
-        'redirect_uri' => $configuredRedirectUri,
-        'created_at'   => time(),
-    ];
+    $state = encodeOAuthState($configuredRedirectUri);
 
     // Buat URL authorization menggunakan Instagram Login
     // PENTING: URL-nya instagram.com, BUKAN facebook.com
@@ -103,13 +133,33 @@ if (!$code) {
 $code = str_replace('#_', '', $code);
 $code = trim($code);
 $state = $_GET['state'] ?? null;
-$tokenRedirectUri = $configuredRedirectUri;
 
-if ($state && isset($_SESSION['ig_oauth_states'][$state])) {
-    $tokenRedirectUri = normalizeRedirectUri($_SESSION['ig_oauth_states'][$state]['redirect_uri']);
-    unset($_SESSION['ig_oauth_states'][$state]);
+if (!$state) {
+    writeLog('OAuth callback rejected: missing state; likely stale callback URL', [
+        'code'         => substr($code, 0, 20) . '...',
+        'redirect_uri' => $configuredRedirectUri,
+    ]);
+
+    die("
+        <link rel='stylesheet' href='assets/style.css'>
+        <div class='container' style='margin-top:50px'>
+            <div class='card'>
+                <h2>OAuth Perlu Diulang</h2>
+                <p style='margin:12px 0; color:var(--danger)'>Link callback ini tidak berisi state OAuth. Biasanya ini terjadi karena link lama di-refresh atau code lama dibuka ulang.</p>
+                <p style='font-size:13px; margin-top:15px'>Klik tombol di bawah untuk membuat request OAuth baru dengan Redirect URI <code>" . htmlspecialchars($configuredRedirectUri) . "</code>.</p>
+                <a href='auth.php' class='btn btn-primary' style='margin-top:16px'>Hubungkan Instagram Ulang</a>
+            </div>
+        </div>
+    ");
+}
+
+$tokenRedirectUri = $configuredRedirectUri;
+$statePayload = decodeOAuthState($state);
+
+if ($statePayload) {
+    $tokenRedirectUri = normalizeRedirectUri($statePayload['redirect_uri']);
 } else {
-    writeLog('OAuth state missing or expired; using configured redirect URI', [
+    writeLog('OAuth state missing or invalid; using configured redirect URI', [
         'received_state' => $state,
         'redirect_uri'   => $tokenRedirectUri,
     ]);
