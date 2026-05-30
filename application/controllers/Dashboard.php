@@ -204,15 +204,19 @@ class Dashboard extends CI_Controller
 
     private function fetchInstagramProfile($accessToken, $igUserId)
     {
+        $versionedGraphBase = rtrim(IG_GRAPH_API_BASE, '/') . '/' . IG_GRAPH_API_VERSION;
         $fieldSets = [
+            'id,username',
             'user_id,username,name,account_type,profile_picture_url,followers_count,media_count',
             'id,username,name,account_type,profile_picture_url,followers_count,media_count',
             'id,username,account_type,media_count',
         ];
 
         $endpoints = [
-            IG_GRAPH_API_BASE . '/' . rawurlencode((string)$igUserId),
+            $versionedGraphBase . '/me',
             IG_GRAPH_API_BASE . '/me',
+            $versionedGraphBase . '/' . rawurlencode((string)$igUserId),
+            IG_GRAPH_API_BASE . '/' . rawurlencode((string)$igUserId),
         ];
 
         $lastResponse = null;
@@ -238,6 +242,18 @@ class Dashboard extends CI_Controller
         }
 
         return $lastResponse ?: ['error' => ['message' => 'Profil Instagram tidak mengembalikan response.']];
+    }
+
+    private function buildFallbackInstagramProfile($igUserId)
+    {
+        return [
+            'user_id' => $igUserId,
+            'username' => 'ig_' . $igUserId,
+            'name' => null,
+            'profile_picture_url' => null,
+            'followers_count' => 0,
+            'media_count' => 0,
+        ];
     }
 
     public function instagram_login()
@@ -398,9 +414,11 @@ class Dashboard extends CI_Controller
         writeLog('Profile Response', $profile);
 
         if (isset($profile['error']) || !isset($profile['user_id'])) {
-            $errMsg = $this->getApiErrorMessage($profile, 'Gagal mengambil data profil dari Instagram.');
-            $this->show_oauth_error('Gagal Mengambil Profil', $errMsg, json_encode($profile));
-            return;
+            writeLog('Profile fetch failed after token success; continuing with fallback profile', [
+                'ig_user_id' => $igUserId,
+                'profile_error' => $profile,
+            ]);
+            $profile = $this->buildFallbackInstagramProfile($igUserId);
         }
 
         // 5. Simpan ke database
