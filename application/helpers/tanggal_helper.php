@@ -306,3 +306,145 @@ function writeLog($message, $data = null)
     file_put_contents($logFile, $log, FILE_APPEND);
 }
 
+/**
+ * Helper: Auto-create required database tables if they do not exist
+ */
+function check_and_create_db_tables()
+{
+    $ci = &get_instance();
+    if (!isset($ci->db)) {
+        return;
+    }
+
+    // 1. Table: users
+    if (!$ci->db->table_exists('users')) {
+        $ci->db->query("CREATE TABLE `users` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `email` VARCHAR(255) NOT NULL,
+            `name` VARCHAR(255) DEFAULT NULL,
+            `nama` VARCHAR(255) DEFAULT NULL,
+            `given_name` VARCHAR(255) DEFAULT NULL,
+            `family_name` VARCHAR(255) DEFAULT NULL,
+            `picture` VARCHAR(255) DEFAULT NULL,
+            `locale` VARCHAR(50) DEFAULT NULL,
+            `status` VARCHAR(50) DEFAULT 'aktif',
+            `level` VARCHAR(50) DEFAULT 'user',
+            `create_at` DATETIME DEFAULT NULL,
+            `login_at` DATETIME DEFAULT NULL,
+            UNIQUE KEY `uk_email` (`email`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    }
+
+    // Insert default user if not exists
+    $email_default = 'blowebdev17@gmail.com';
+    $check_default = $ci->db->get_where('users', ['email' => $email_default])->num_rows();
+    if ($check_default == 0) {
+        $ci->db->insert('users', [
+            'email' => $email_default,
+            'name' => 'Huda Miftakh',
+            'nama' => 'Huda Miftakh',
+            'status' => 'aktif',
+            'level' => 'admin',
+            'create_at' => date('Y-m-d H:i:s'),
+            'login_at' => date('Y-m-d H:i:s')
+        ]);
+    }
+
+    // 2. Table: login_logs
+    if (!$ci->db->table_exists('login_logs')) {
+        $ci->db->query("CREATE TABLE `login_logs` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `user_id` INT DEFAULT NULL,
+            `email` VARCHAR(255) DEFAULT NULL,
+            `name` VARCHAR(255) DEFAULT NULL,
+            `ip_address` VARCHAR(50) DEFAULT NULL,
+            `user_agent` TEXT DEFAULT NULL,
+            `login_at` DATETIME DEFAULT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    }
+
+    // 3. Table: access_tokens
+    if (!$ci->db->table_exists('access_tokens')) {
+        $ci->db->query("CREATE TABLE `access_tokens` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `ig_user_id` VARCHAR(100) NOT NULL,
+            `username` VARCHAR(255) DEFAULT NULL,
+            `name` VARCHAR(255) DEFAULT NULL,
+            `access_token` TEXT NOT NULL,
+            `token_type` VARCHAR(50) DEFAULT 'bearer',
+            `expires_at` DATETIME DEFAULT NULL,
+            `page_id` VARCHAR(100) DEFAULT NULL,
+            `page_access_token` TEXT DEFAULT NULL,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY `uk_ig_user_id` (`ig_user_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    }
+
+    // 4. Table: webhook_logs
+    if (!$ci->db->table_exists('webhook_logs')) {
+        $ci->db->query("CREATE TABLE `webhook_logs` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `object` VARCHAR(100) DEFAULT NULL,
+            `entry_id` VARCHAR(100) DEFAULT NULL,
+            `event_type` VARCHAR(100) DEFAULT NULL,
+            `field` VARCHAR(100) DEFAULT NULL,
+            `value` JSON DEFAULT NULL,
+            `raw_payload` JSON DEFAULT NULL,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    }
+
+    // 5. Table: comments
+    if (!$ci->db->table_exists('comments')) {
+        $ci->db->query("CREATE TABLE `comments` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `comment_id` VARCHAR(100) NOT NULL,
+            `media_id` VARCHAR(100) DEFAULT NULL,
+            `parent_id` VARCHAR(100) DEFAULT NULL,
+            `from_id` VARCHAR(100) DEFAULT NULL,
+            `from_username` VARCHAR(255) DEFAULT NULL,
+            `text` TEXT DEFAULT NULL,
+            `timestamp` DATETIME DEFAULT NULL,
+            `is_from_webhook` TINYINT(1) DEFAULT 0,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY `uk_comment_id` (`comment_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    }
+
+    // 6. Table: media
+    if (!$ci->db->table_exists('media')) {
+        $ci->db->query("CREATE TABLE `media` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `media_id` VARCHAR(100) NOT NULL,
+            `ig_user_id` VARCHAR(100) DEFAULT NULL,
+            `media_type` VARCHAR(50) DEFAULT NULL,
+            `media_url` TEXT DEFAULT NULL,
+            `permalink` TEXT DEFAULT NULL,
+            `caption` TEXT DEFAULT NULL,
+            `timestamp` DATETIME DEFAULT NULL,
+            `like_count` INT DEFAULT 0,
+            `comments_count` INT DEFAULT 0,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY `uk_media_id` (`media_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    }
+
+    // 7. Table: messages
+    if (!$ci->db->table_exists('messages')) {
+        $ci->db->query("CREATE TABLE `messages` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `message_id` VARCHAR(100) NOT NULL,
+            `sender_id` VARCHAR(100) DEFAULT NULL,
+            `recipient_id` VARCHAR(100) DEFAULT NULL,
+            `message_text` TEXT DEFAULT NULL,
+            `attachments` JSON DEFAULT NULL,
+            `timestamp` DATETIME DEFAULT NULL,
+            `is_from_webhook` TINYINT(1) DEFAULT 0,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY `uk_message_id` (`message_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    }
+}
+

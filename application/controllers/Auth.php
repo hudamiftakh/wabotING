@@ -17,6 +17,7 @@ class auth extends CI_Controller
         $this->load->library('pagination');
         $this->load->library('Googleplus');
         $this->load->model('M_Datatables');
+        check_and_create_db_tables();
     }
     public function index()
     {

@@ -15,6 +15,7 @@ class Dashboard extends CI_Controller
         parent::__construct();
         $this->load->library('session');
         $this->load->helper('url');
+        check_and_create_db_tables();
         
         // Cek login session untuk semua method kecuali instagram_callback
         $method = $this->router->fetch_method();

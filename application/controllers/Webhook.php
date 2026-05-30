@@ -12,6 +12,7 @@ class Webhook extends CI_Controller
     {
         parent::__construct();
         $this->load->helper('url');
+        check_and_create_db_tables();
     }
 
     public function index()
