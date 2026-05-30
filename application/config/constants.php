@@ -107,6 +107,6 @@ defined('WEBHOOK_VERIFY_TOKEN') or define('WEBHOOK_VERIFY_TOKEN', 'token_verifik
 
 defined('IG_GRAPH_API_VERSION') or define('IG_GRAPH_API_VERSION', 'v21.0');
 defined('IG_GRAPH_API_BASE') or define('IG_GRAPH_API_BASE', 'https://graph.instagram.com');
-defined('IG_AUTH_URL') or define('IG_AUTH_URL', 'https://api.instagram.com/oauth/authorize');
+defined('IG_AUTH_URL') or define('IG_AUTH_URL', 'https://www.instagram.com/oauth/authorize');
 defined('IG_TOKEN_URL') or define('IG_TOKEN_URL', 'https://api.instagram.com/oauth/access_token');
 defined('FB_GRAPH_API_BASE') or define('FB_GRAPH_API_BASE', 'https://graph.facebook.com/' . IG_GRAPH_API_VERSION);

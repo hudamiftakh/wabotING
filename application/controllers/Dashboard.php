@@ -351,11 +351,14 @@ class Dashboard extends CI_Controller
         
         $scopes = implode(',', [
             'instagram_business_basic',
-            'instagram_business_manage_comments',
             'instagram_business_manage_messages',
+            'instagram_business_manage_comments',
+            'instagram_business_content_publish',
+            'instagram_business_manage_insights',
         ]);
 
         $authUrl = IG_AUTH_URL . '?' . http_build_query([
+            'force_reauth'  => 'true',
             'client_id'     => IG_APP_ID,
             'redirect_uri'  => $configuredRedirectUri,
             'response_type' => 'code',
