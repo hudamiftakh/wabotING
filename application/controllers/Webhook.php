@@ -28,14 +28,19 @@ class Webhook extends CI_Controller
         }
     }
 
+    private function igGraphUrl($path)
+    {
+        return rtrim(IG_GRAPH_API_BASE, '/') . '/' . IG_GRAPH_API_VERSION . '/' . ltrim($path, '/');
+    }
+
     /**
      * Meta Webhook Verification (GET)
      */
     private function handleVerification()
     {
-        $mode = $this->input->get('hub_mode') ?? '';
-        $token = $this->input->get('hub_verify_token') ?? '';
-        $challenge = $this->input->get('hub_challenge') ?? '';
+        $mode = $this->input->get('hub.mode') ?? $this->input->get('hub_mode') ?? '';
+        $token = $this->input->get('hub.verify_token') ?? $this->input->get('hub_verify_token') ?? '';
+        $challenge = $this->input->get('hub.challenge') ?? $this->input->get('hub_challenge') ?? '';
 
         writeLog('Webhook Verification Request via Controller', [
             'mode' => $mode,
@@ -332,7 +337,7 @@ class Webhook extends CI_Controller
             $responseText = $template['response_text'];
             $payload = [];
             if ($channel === 'comment') {
-                $url = IG_GRAPH_API_BASE . '/' . $targetId . '/replies';
+                $url = $this->igGraphUrl('/' . rawurlencode((string)$targetId) . '/replies');
                 $payload = [
                     'message' => $responseText,
                     'access_token' => $tokenRow['access_token'],
@@ -341,7 +346,7 @@ class Webhook extends CI_Controller
                 if (!$senderId || $senderId === $igUserId) {
                     return;
                 }
-                $url = IG_GRAPH_API_BASE . '/me/messages';
+                $url = $this->igGraphUrl('/me/messages');
                 $payload = [
                     'recipient' => json_encode(['id' => $senderId]),
                     'message' => json_encode(['text' => $responseText]),

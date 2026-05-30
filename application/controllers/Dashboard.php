@@ -202,9 +202,13 @@ class Dashboard extends CI_Controller
         exit;
     }
 
+    private function igGraphUrl($path)
+    {
+        return rtrim(IG_GRAPH_API_BASE, '/') . '/' . IG_GRAPH_API_VERSION . '/' . ltrim($path, '/');
+    }
+
     private function fetchInstagramProfile($accessToken, $igUserId)
     {
-        $versionedGraphBase = rtrim(IG_GRAPH_API_BASE, '/') . '/' . IG_GRAPH_API_VERSION;
         $fieldSets = [
             'id,username',
             'user_id,username,name,account_type,profile_picture_url,followers_count,media_count',
@@ -213,9 +217,9 @@ class Dashboard extends CI_Controller
         ];
 
         $endpoints = [
-            $versionedGraphBase . '/me',
+            $this->igGraphUrl('/me'),
             IG_GRAPH_API_BASE . '/me',
-            $versionedGraphBase . '/' . rawurlencode((string)$igUserId),
+            $this->igGraphUrl('/' . rawurlencode((string)$igUserId)),
             IG_GRAPH_API_BASE . '/' . rawurlencode((string)$igUserId),
         ];
 
@@ -254,6 +258,21 @@ class Dashboard extends CI_Controller
             'followers_count' => 0,
             'media_count' => 0,
         ];
+    }
+
+    private function subscribeInstagramWebhooks($accessToken, $igUserId)
+    {
+        $response = callGraphAPI($this->igGraphUrl('/' . rawurlencode((string)$igUserId) . '/subscribed_apps'), 'POST', [
+            'subscribed_fields' => 'comments,messages,live_comments',
+            'access_token' => $accessToken,
+        ]);
+
+        writeLog('Instagram webhook subscription response', [
+            'ig_user_id' => $igUserId,
+            'response' => $response,
+        ]);
+
+        return $response;
     }
 
     public function instagram_login()
@@ -409,6 +428,9 @@ class Dashboard extends CI_Controller
         $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
         $tokenType = $longLivedResponse['token_type'] ?? 'bearer';
 
+        // Install webhook subscriptions for this Instagram professional account.
+        $subscriptionResponse = $this->subscribeInstagramWebhooks($accessToken, $igUserId);
+
         // 4. Ambil Profil User
         $profile = $this->fetchInstagramProfile($accessToken, $igUserId);
         writeLog('Profile Response', $profile);
@@ -460,6 +482,7 @@ class Dashboard extends CI_Controller
         writeLog('Token saved to database in Controller', [
             'ig_user_id' => $ig_user_id,
             'user_email' => $user_email,
+            'webhook_subscription' => $subscriptionResponse,
         ]);
 
         $this->redirectAfterOAuth($username);
@@ -895,6 +918,7 @@ class Dashboard extends CI_Controller
             $accessToken = $response['access_token'] ?? $account['access_token'];
             $expiresIn = $response['expires_in'] ?? (60 * 24 * 60 * 60);
             $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
+            $subscriptionResponse = $this->subscribeInstagramWebhooks($accessToken, $igUserId);
 
             $this->db->where('ig_user_id', $igUserId)->update('access_tokens', [
                 'access_token' => $accessToken,
@@ -902,7 +926,7 @@ class Dashboard extends CI_Controller
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
 
-            $this->json_res(['success' => true, 'expires_at' => $expiresAt]);
+            $this->json_res(['success' => true, 'expires_at' => $expiresAt, 'webhook_subscription' => $subscriptionResponse]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
         }
@@ -1088,24 +1112,22 @@ class Dashboard extends CI_Controller
                 $this->json_res(['success' => false, 'error' => 'Token not found']);
             }
             $token = $tokenRow['access_token'];
+            $subscriptionResponse = $this->subscribeInstagramWebhooks($token, $igUserId);
 
             // Sinkronisasi profil terupdate
-            $profile = callGraphAPI(IG_GRAPH_API_BASE . '/me', 'GET', [
-                'fields'       => 'user_id,username,name,profile_picture_url,followers_count,media_count',
+            $profile = callGraphAPI($this->igGraphUrl('/me'), 'GET', [
+                'fields'       => 'id,username',
                 'access_token' => $token,
             ]);
             if ($profile && !isset($profile['error'])) {
                 $this->db->where('ig_user_id', $igUserId)->update('access_tokens', [
-                    'name' => $profile['name'] ?? null,
-                    'profile_picture_url' => $profile['profile_picture_url'] ?? null,
-                    'followers_count' => $profile['followers_count'] ?? 0,
-                    'media_count' => $profile['media_count'] ?? 0,
+                    'username' => $profile['username'] ?? ('ig_' . $igUserId),
                     'updated_at' => date('Y-m-d H:i:s')
                 ]);
             }
 
             // Panggil API
-            $response = callGraphAPI(IG_GRAPH_API_BASE . '/me/media', 'GET', [
+            $response = callGraphAPI($this->igGraphUrl('/me/media'), 'GET', [
                 'access_token' => $token,
                 'fields' => 'id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count',
                 'limit' => 20,
@@ -1142,9 +1164,9 @@ class Dashboard extends CI_Controller
                     $this->db->insert('media', $mediaData);
                 }
 
-                $commentsResponse = callGraphAPI(IG_GRAPH_API_BASE . '/' . $media_id . '/comments', 'GET', [
+                $commentsResponse = callGraphAPI($this->igGraphUrl('/' . rawurlencode((string)$media_id) . '/comments'), 'GET', [
                     'access_token' => $token,
-                    'fields' => 'id,text,username,timestamp,like_count',
+                    'fields' => 'id,text,timestamp,like_count',
                     'limit' => 50,
                 ]);
 
@@ -1178,7 +1200,7 @@ class Dashboard extends CI_Controller
                 }
             }
 
-            $this->json_res(['success' => true, 'data' => $mediaList, 'count' => count($mediaList), 'comments_count' => $syncedComments]);
+            $this->json_res(['success' => true, 'data' => $mediaList, 'count' => count($mediaList), 'comments_count' => $syncedComments, 'webhook_subscription' => $subscriptionResponse]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
         }
@@ -1199,9 +1221,9 @@ class Dashboard extends CI_Controller
             }
             $token = $tokenRow['access_token'];
 
-            $response = callGraphAPI(IG_GRAPH_API_BASE . '/' . $mediaId . '/comments', 'GET', [
+            $response = callGraphAPI($this->igGraphUrl('/' . rawurlencode((string)$mediaId) . '/comments'), 'GET', [
                 'access_token' => $token,
-                'fields' => 'id,text,username,timestamp,like_count,replies{id,text,username,timestamp}',
+                'fields' => 'id,text,timestamp,like_count,replies{id,text,timestamp}',
                 'limit' => 50,
             ]);
 
@@ -1316,7 +1338,7 @@ class Dashboard extends CI_Controller
                 $this->json_res(['success' => false, 'error' => 'Token not found']);
             }
 
-            $response = callGraphAPI(IG_GRAPH_API_BASE . '/' . $commentId . '/replies', 'POST', [
+            $response = callGraphAPI($this->igGraphUrl('/' . rawurlencode((string)$commentId) . '/replies'), 'POST', [
                 'message' => $message,
                 'access_token' => $tokenRow['access_token'],
             ]);
