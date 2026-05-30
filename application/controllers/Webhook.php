@@ -112,9 +112,11 @@ class Webhook extends CI_Controller
                 ];
                 $this->db->insert('webhook_logs', $logData);
 
-                // Handle comments
+                // Handle comments and messages
                 if ($field === 'comments') {
                     $this->handleNewComment($value, $entryId);
+                } elseif ($field === 'messages') {
+                    $this->handleNewMessageChange($value, $entryId);
                 }
 
                 writeLog("Processed change via Controller: field=$field", $value);
@@ -203,5 +205,35 @@ class Webhook extends CI_Controller
         }
 
         writeLog('Message saved to DB via Controller', ['message_id' => $messageId]);
+    }
+
+    /**
+     * Handle pesan baru (DM) dari webhook dalam format changes
+     */
+    private function handleNewMessageChange($value, $igUserId)
+    {
+        $messageId = $value['id'] ?? $value['message_id'] ?? null;
+        if (!$messageId) return;
+
+        $messageData = [
+            'message_id' => $messageId,
+            'sender_id' => $value['sender']['id'] ?? $value['from']['id'] ?? null,
+            'recipient_id' => $igUserId,
+            'message_text' => $value['text'] ?? $value['message'] ?? '',
+            'attachments' => isset($value['attachments']) ? json_encode($value['attachments']) : null,
+            'is_from_webhook' => 1,
+            'timestamp' => date('Y-m-d H:i:s')
+        ];
+
+        $exist = $this->db->get_where('messages', ['message_id' => $messageId])->row_array();
+
+        if ($exist) {
+            $this->db->where('message_id', $messageId)->update('messages', $messageData);
+        } else {
+            $messageData['created_at'] = date('Y-m-d H:i:s');
+            $this->db->insert('messages', $messageData);
+        }
+
+        writeLog('Message from changes saved to DB via Controller', ['message_id' => $messageId]);
     }
 }

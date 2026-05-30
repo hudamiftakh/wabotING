@@ -367,9 +367,13 @@ function check_and_create_db_tables()
     if (!$ci->db->table_exists('access_tokens')) {
         $ci->db->query("CREATE TABLE `access_tokens` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `user_email` VARCHAR(255) DEFAULT NULL,
             `ig_user_id` VARCHAR(100) NOT NULL,
             `username` VARCHAR(255) DEFAULT NULL,
             `name` VARCHAR(255) DEFAULT NULL,
+            `profile_picture_url` TEXT DEFAULT NULL,
+            `followers_count` INT DEFAULT 0,
+            `media_count` INT DEFAULT 0,
             `access_token` TEXT NOT NULL,
             `token_type` VARCHAR(50) DEFAULT 'bearer',
             `expires_at` DATETIME DEFAULT NULL,
@@ -379,6 +383,20 @@ function check_and_create_db_tables()
             `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY `uk_ig_user_id` (`ig_user_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    } else {
+        // Ensure user_email column exists if table is already created
+        if (!$ci->db->field_exists('user_email', 'access_tokens')) {
+            $ci->db->query("ALTER TABLE `access_tokens` ADD `user_email` VARCHAR(255) DEFAULT NULL AFTER `id`;");
+        }
+        if (!$ci->db->field_exists('profile_picture_url', 'access_tokens')) {
+            $ci->db->query("ALTER TABLE `access_tokens` ADD `profile_picture_url` TEXT DEFAULT NULL AFTER `name`;");
+        }
+        if (!$ci->db->field_exists('followers_count', 'access_tokens')) {
+            $ci->db->query("ALTER TABLE `access_tokens` ADD `followers_count` INT DEFAULT 0 AFTER `profile_picture_url`;");
+        }
+        if (!$ci->db->field_exists('media_count', 'access_tokens')) {
+            $ci->db->query("ALTER TABLE `access_tokens` ADD `media_count` INT DEFAULT 0 AFTER `followers_count`;");
+        }
     }
 
     // 4. Table: webhook_logs

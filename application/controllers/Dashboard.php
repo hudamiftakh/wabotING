@@ -32,10 +32,41 @@ class Dashboard extends CI_Controller
         }
     }
 
+    private function get_my_ig_ids()
+    {
+        $userData = useraAuthData();
+        $user_email = $userData['email'] ?? '';
+        $level = $userData['level'] ?? '';
+
+        if ($user_email === 'blowebdev17@gmail.com' || $level === 'admin') {
+            return null; // Admin sees all
+        }
+
+        $tokens = $this->db->select('ig_user_id')
+                           ->where('user_email', $user_email)
+                           ->get('access_tokens')
+                           ->result_array();
+        
+        $ids = array_map(function($row) {
+            return $row['ig_user_id'];
+        }, $tokens);
+
+        return !empty($ids) ? $ids : ['none_connected'];
+    }
+
     public function index()
     {
-        // Ambil akun terhubung
-        $data['accounts'] = $this->db->order_by('updated_at', 'DESC')->get('access_tokens')->result_array();
+        $userData = useraAuthData();
+        $user_email = $userData['email'] ?? '';
+        $level = $userData['level'] ?? '';
+
+        // Ambil akun terhubung sesuai email login (admin melihat semua)
+        $this->db->order_by('updated_at', 'DESC');
+        if ($user_email !== 'blowebdev17@gmail.com' && $level !== 'admin') {
+            $this->db->where('user_email', $user_email);
+        }
+        $data['accounts'] = $this->db->get('access_tokens')->result_array();
+        
         $data['halaman'] = 'dashboard/index';
         
         // Pass empty variables for backward compatibility with modul.php structure
@@ -234,18 +265,24 @@ class Dashboard extends CI_Controller
         $username = $profile['username'] ?? null;
         $name = $profile['name'] ?? null;
 
-        $check = $this->db->get_where('access_tokens', ['ig_user_id' => $ig_user_id])->row_array();
+        $userData = useraAuthData();
+        $user_email = $userData['email'] ?? null;
 
         $tokenData = [
+            'user_email' => $user_email,
             'ig_user_id' => $ig_user_id,
             'username' => $username,
             'name' => $name,
+            'profile_picture_url' => $profile['profile_picture_url'] ?? null,
+            'followers_count' => $profile['followers_count'] ?? 0,
+            'media_count' => $profile['media_count'] ?? 0,
             'access_token' => $accessToken,
             'token_type' => $tokenType,
             'expires_at' => $expiresAt,
             'updated_at' => date('Y-m-d H:i:s')
         ];
 
+        $check = $this->db->get_where('access_tokens', ['ig_user_id' => $ig_user_id])->row_array();
         if ($check) {
             $this->db->where('ig_user_id', $ig_user_id)->update('access_tokens', $tokenData);
         } else {
@@ -284,13 +321,64 @@ class Dashboard extends CI_Controller
     public function get_stats()
     {
         try {
+            $my_ids = $this->get_my_ig_ids();
+            $igUserId = $this->input->get('ig_user_id');
             $stats = [];
-            $stats['total_accounts'] = $this->db->count_all('access_tokens');
-            $stats['total_webhook_events'] = $this->db->count_all('webhook_logs');
-            $stats['total_comments'] = $this->db->count_all('comments');
-            $stats['total_messages'] = $this->db->count_all('messages');
-            $stats['total_media'] = $this->db->count_all('media');
-            $latest = $this->db->select('created_at')->order_by('created_at', 'DESC')->limit(1)->get('webhook_logs')->row_array();
+
+            if ($igUserId) {
+                if ($my_ids !== null && !in_array($igUserId, $my_ids)) {
+                    $this->json_res(['success' => false, 'error' => 'Unauthorized']);
+                }
+                $filter_ids = [$igUserId];
+            } else {
+                $filter_ids = $my_ids;
+            }
+
+            // Total accounts
+            $this->db->from('access_tokens');
+            if ($filter_ids !== null) {
+                $this->db->where_in('ig_user_id', $filter_ids);
+            }
+            $stats['total_accounts'] = $this->db->count_all_results();
+
+            // Total webhook logs
+            $this->db->from('webhook_logs');
+            if ($filter_ids !== null) {
+                $this->db->where_in('entry_id', $filter_ids);
+            }
+            $stats['total_webhook_events'] = $this->db->count_all_results();
+
+            // Total comments
+            $this->db->from('comments');
+            if ($filter_ids !== null) {
+                $this->db->join('media', 'media.media_id = comments.media_id');
+                $this->db->where_in('media.ig_user_id', $filter_ids);
+            }
+            $stats['total_comments'] = $this->db->count_all_results();
+
+            // Total messages
+            $this->db->from('messages');
+            if ($filter_ids !== null) {
+                $this->db->group_start();
+                $this->db->where_in('sender_id', $filter_ids);
+                $this->db->or_where_in('recipient_id', $filter_ids);
+                $this->db->group_end();
+            }
+            $stats['total_messages'] = $this->db->count_all_results();
+
+            // Total media
+            $this->db->from('media');
+            if ($filter_ids !== null) {
+                $this->db->where_in('ig_user_id', $filter_ids);
+            }
+            $stats['total_media'] = $this->db->count_all_results();
+
+            // Latest event
+            $this->db->select('created_at')->from('webhook_logs');
+            if ($filter_ids !== null) {
+                $this->db->where_in('entry_id', $filter_ids);
+            }
+            $latest = $this->db->order_by('created_at', 'DESC')->limit(1)->get()->row_array();
             $stats['latest_event'] = $latest ? $latest['created_at'] : '-';
 
             $this->json_res(['success' => true, 'data' => $stats]);
@@ -302,7 +390,15 @@ class Dashboard extends CI_Controller
     public function get_accounts()
     {
         try {
-            $accounts = $this->db->order_by('updated_at', 'DESC')->get('access_tokens')->result_array();
+            $userData = useraAuthData();
+            $user_email = $userData['email'] ?? '';
+            $level = $userData['level'] ?? '';
+
+            $this->db->order_by('updated_at', 'DESC');
+            if ($user_email !== 'blowebdev17@gmail.com' && $level !== 'admin') {
+                $this->db->where('user_email', $user_email);
+            }
+            $accounts = $this->db->get('access_tokens')->result_array();
             $this->json_res(['success' => true, 'data' => $accounts]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
@@ -313,7 +409,19 @@ class Dashboard extends CI_Controller
     {
         try {
             $limit = (int)($this->input->get('limit') ?? 50);
-            $logs = $this->db->order_by('created_at', 'DESC')->limit($limit)->get('webhook_logs')->result_array();
+            $my_ids = $this->get_my_ig_ids();
+            $igUserId = $this->input->get('ig_user_id');
+            
+            $this->db->order_by('created_at', 'DESC')->limit($limit);
+            if ($igUserId) {
+                if ($my_ids !== null && !in_array($igUserId, $my_ids)) {
+                    $this->json_res(['success' => false, 'error' => 'Unauthorized']);
+                }
+                $this->db->where('entry_id', $igUserId);
+            } elseif ($my_ids !== null) {
+                $this->db->where_in('entry_id', $my_ids);
+            }
+            $logs = $this->db->get('webhook_logs')->result_array();
             $this->json_res(['success' => true, 'data' => $logs]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
@@ -324,7 +432,25 @@ class Dashboard extends CI_Controller
     {
         try {
             $limit = (int)($this->input->get('limit') ?? 50);
-            $comments = $this->db->order_by('created_at', 'DESC')->limit($limit)->get('comments')->result_array();
+            $my_ids = $this->get_my_ig_ids();
+            $igUserId = $this->input->get('ig_user_id');
+
+            $this->db->select('comments.*, media.ig_user_id, access_tokens.username as target_ig_username');
+            $this->db->from('comments');
+            $this->db->join('media', 'media.media_id = comments.media_id', 'left');
+            $this->db->join('access_tokens', 'access_tokens.ig_user_id = media.ig_user_id', 'left');
+
+            if ($igUserId) {
+                if ($my_ids !== null && !in_array($igUserId, $my_ids)) {
+                    $this->json_res(['success' => false, 'error' => 'Unauthorized']);
+                }
+                $this->db->where('media.ig_user_id', $igUserId);
+            } elseif ($my_ids !== null) {
+                $this->db->where_in('media.ig_user_id', $my_ids);
+            }
+
+            $this->db->order_by('comments.created_at', 'DESC')->limit($limit);
+            $comments = $this->db->get()->result_array();
             $this->json_res(['success' => true, 'data' => $comments]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
@@ -335,7 +461,33 @@ class Dashboard extends CI_Controller
     {
         try {
             $limit = (int)($this->input->get('limit') ?? 50);
-            $messages = $this->db->order_by('created_at', 'DESC')->limit($limit)->get('messages')->result_array();
+            $my_ids = $this->get_my_ig_ids();
+            $igUserId = $this->input->get('ig_user_id');
+
+            $this->db->select('messages.*, 
+                sender_acc.username as sender_username, 
+                recipient_acc.username as recipient_username');
+            $this->db->from('messages');
+            $this->db->join('access_tokens as sender_acc', 'sender_acc.ig_user_id = messages.sender_id', 'left');
+            $this->db->join('access_tokens as recipient_acc', 'recipient_acc.ig_user_id = messages.recipient_id', 'left');
+
+            if ($igUserId) {
+                if ($my_ids !== null && !in_array($igUserId, $my_ids)) {
+                    $this->json_res(['success' => false, 'error' => 'Unauthorized']);
+                }
+                $this->db->group_start();
+                $this->db->where('messages.sender_id', $igUserId);
+                $this->db->or_where('messages.recipient_id', $igUserId);
+                $this->db->group_end();
+            } elseif ($my_ids !== null) {
+                $this->db->group_start();
+                $this->db->where_in('messages.sender_id', $my_ids);
+                $this->db->or_where_in('messages.recipient_id', $my_ids);
+                $this->db->group_end();
+            }
+
+            $this->db->order_by('messages.created_at', 'DESC')->limit($limit);
+            $messages = $this->db->get()->result_array();
             $this->json_res(['success' => true, 'data' => $messages]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
@@ -346,7 +498,19 @@ class Dashboard extends CI_Controller
     {
         try {
             $limit = (int)($this->input->get('limit') ?? 20);
-            $media = $this->db->order_by('timestamp', 'DESC')->limit($limit)->get('media')->result_array();
+            $my_ids = $this->get_my_ig_ids();
+            $igUserId = $this->input->get('ig_user_id');
+
+            $this->db->order_by('timestamp', 'DESC')->limit($limit);
+            if ($igUserId) {
+                if ($my_ids !== null && !in_array($igUserId, $my_ids)) {
+                    $this->json_res(['success' => false, 'error' => 'Unauthorized']);
+                }
+                $this->db->where('ig_user_id', $igUserId);
+            } elseif ($my_ids !== null) {
+                $this->db->where_in('ig_user_id', $my_ids);
+            }
+            $media = $this->db->get('media')->result_array();
             $this->json_res(['success' => true, 'data' => $media]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
@@ -367,6 +531,21 @@ class Dashboard extends CI_Controller
                 $this->json_res(['success' => false, 'error' => 'Token not found']);
             }
             $token = $tokenRow['access_token'];
+
+            // Sinkronisasi profil terupdate
+            $profile = callGraphAPI(IG_GRAPH_API_BASE . '/me', 'GET', [
+                'fields'       => 'user_id,username,name,profile_picture_url,followers_count,media_count',
+                'access_token' => $token,
+            ]);
+            if ($profile && !isset($profile['error'])) {
+                $this->db->where('ig_user_id', $igUserId)->update('access_tokens', [
+                    'name' => $profile['name'] ?? null,
+                    'profile_picture_url' => $profile['profile_picture_url'] ?? null,
+                    'followers_count' => $profile['followers_count'] ?? 0,
+                    'media_count' => $profile['media_count'] ?? 0,
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+            }
 
             // Panggil API
             $response = callGraphAPI(IG_GRAPH_API_BASE . '/me/media', 'GET', [
@@ -460,6 +639,36 @@ class Dashboard extends CI_Controller
             }
 
             $this->json_res(['success' => true, 'data' => $commentsList, 'count' => count($commentsList)]);
+        } catch (Exception $e) {
+            $this->json_res(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function delete_account()
+    {
+        $igUserId = $this->input->get('ig_user_id');
+        if (!$igUserId) {
+            $this->json_res(['success' => false, 'error' => 'ig_user_id required']);
+        }
+
+        try {
+            $userData = useraAuthData();
+            $user_email = $userData['email'] ?? '';
+            $level = $userData['level'] ?? '';
+
+            // If not admin, verify ownership before deleting
+            if ($user_email !== 'blowebdev17@gmail.com' && $level !== 'admin') {
+                $check = $this->db->get_where('access_tokens', [
+                    'ig_user_id' => $igUserId,
+                    'user_email' => $user_email
+                ])->row_array();
+                if (!$check) {
+                    $this->json_res(['success' => false, 'error' => 'Anda tidak memiliki hak untuk menghapus akun ini.']);
+                }
+            }
+
+            $this->db->delete('access_tokens', ['ig_user_id' => $igUserId]);
+            $this->json_res(['success' => true]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
         }
