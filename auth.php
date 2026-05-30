@@ -77,16 +77,31 @@ if (!$code) {
 // Instagram mengirim code setelah user login & izinkan
 // Code ini harus ditukar dengan access token dalam waktu singkat
 
+// Hapus #_ atau spasi jika tidak sengaja terbawa di URL
+$code = str_replace('#_', '', $code);
+$code = trim($code);
+
 writeLog('Received OAuth code', ['code' => substr($code, 0, 20) . '...']);
 
 // POST ke https://api.instagram.com/oauth/access_token
-$tokenResponse = callGraphAPI(IG_TOKEN_URL, 'POST', [
+// PENTING: Instagram versi lama sering mewajibkan multipart/form-data, bukan url-encoded.
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, IG_TOKEN_URL);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, [
     'client_id'     => IG_APP_ID,
     'client_secret' => IG_APP_SECRET,
     'grant_type'    => 'authorization_code',
     'redirect_uri'  => IG_REDIRECT_URI,
     'code'          => $code,
 ]);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+$response = curl_exec($ch);
+$error = curl_error($ch);
+curl_close($ch);
+
+$tokenResponse = $response ? json_decode($response, true) : ['error' => 'cURL fail: ' . $error];
 
 writeLog('Short-lived Token Response', $tokenResponse);
 
