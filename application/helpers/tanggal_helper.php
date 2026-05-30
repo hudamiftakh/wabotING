@@ -257,6 +257,7 @@ function generateSecretKey($length = 32)
 function callGraphAPI($url, $method = 'GET', $data = [])
 {
     $ch = curl_init();
+    $method = strtoupper((string)$method);
 
     if ($method === 'GET' && !empty($data)) {
         $url .= '?' . http_build_query($data);

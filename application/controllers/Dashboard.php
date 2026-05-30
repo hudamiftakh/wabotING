@@ -202,6 +202,44 @@ class Dashboard extends CI_Controller
         exit;
     }
 
+    private function fetchInstagramProfile($accessToken, $igUserId)
+    {
+        $fieldSets = [
+            'user_id,username,name,account_type,profile_picture_url,followers_count,media_count',
+            'id,username,name,account_type,profile_picture_url,followers_count,media_count',
+            'id,username,account_type,media_count',
+        ];
+
+        $endpoints = [
+            IG_GRAPH_API_BASE . '/' . rawurlencode((string)$igUserId),
+            IG_GRAPH_API_BASE . '/me',
+        ];
+
+        $lastResponse = null;
+        foreach ($endpoints as $endpoint) {
+            foreach ($fieldSets as $fields) {
+                $profile = callGraphAPI($endpoint, 'GET', [
+                    'fields'       => $fields,
+                    'access_token' => $accessToken,
+                ]);
+
+                writeLog('Profile Response Attempt', [
+                    'endpoint' => $endpoint,
+                    'fields' => $fields,
+                    'response' => $profile,
+                ]);
+
+                $lastResponse = $profile;
+                if (is_array($profile) && empty($profile['error']) && (!empty($profile['user_id']) || !empty($profile['id']))) {
+                    $profile['user_id'] = $profile['user_id'] ?? $profile['id'];
+                    return $profile;
+                }
+            }
+        }
+
+        return $lastResponse ?: ['error' => ['message' => 'Profil Instagram tidak mengembalikan response.']];
+    }
+
     public function instagram_login()
     {
         $configuredRedirectUri = $this->normalizeRedirectUri(IG_REDIRECT_URI);
@@ -356,10 +394,7 @@ class Dashboard extends CI_Controller
         $tokenType = $longLivedResponse['token_type'] ?? 'bearer';
 
         // 4. Ambil Profil User
-        $profile = callGraphAPI(IG_GRAPH_API_BASE . '/me', 'GET', [
-            'fields'       => 'user_id,username,name,account_type,profile_picture_url,followers_count,media_count',
-            'access_token' => $accessToken,
-        ]);
+        $profile = $this->fetchInstagramProfile($accessToken, $igUserId);
         writeLog('Profile Response', $profile);
 
         if (isset($profile['error']) || !isset($profile['user_id'])) {
