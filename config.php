@@ -14,21 +14,21 @@ define('DB_USER', 'wabotweb_chatwabot');
 define('DB_PASS', 'jombang2017');
 
 // ---- KONFIGURASI INSTAGRAM/META APP ----
-define('IG_APP_ID', '1884605762223955');                    // ID Aplikasi Instagram (Untuk Direct IG Login)
-define('IG_APP_SECRET', 'b9772decaec9b2cfa7f827e52bd6e65a'); // Secret Key Instagram
-define('IG_REDIRECT_URI', 'https://ing.wabot.web.id/auth.php');   // ⚠️ Harus dimasukkan ke menu Instagram API > Redirect URIs
+define('IG_APP_ID', '2496439197475089');                    // ID Aplikasi Meta
+define('IG_APP_SECRET', 'c19cfd880b5f5e37f806dc6f826c5929'); // Rahasia Aplikasi Meta
+define('IG_REDIRECT_URI', 'https://ing.wabot.web.id/auth.php');
 
 // Token verifikasi untuk webhook (buat sendiri, bebas apa saja)
 define('WEBHOOK_VERIFY_TOKEN', 'token_verifikasi_instagram_2024');
 
 // ---- INSTAGRAM API ENDPOINTS ----
-// Karena kita pakai Instagram App ID (bukan Facebook App ID),
-// maka kita harus pakai Instagram Login flow
 define('IG_GRAPH_API_VERSION', 'v21.0');
 define('IG_GRAPH_API_BASE', 'https://graph.instagram.com');
-define('IG_AUTH_URL', 'https://www.instagram.com/oauth/authorize');      // OAuth authorize
-define('IG_TOKEN_URL', 'https://api.instagram.com/oauth/access_token');  // Tukar code→token
 define('FB_GRAPH_API_BASE', 'https://graph.facebook.com/' . IG_GRAPH_API_VERSION);
+
+// Menggunakan jalur Facebook Login yang sudah TERBUKTI berhasil
+define('IG_AUTH_URL', 'https://www.facebook.com/' . IG_GRAPH_API_VERSION . '/dialog/oauth');
+define('IG_TOKEN_URL', FB_GRAPH_API_BASE . '/oauth/access_token');
 
 // ---- KONEKSI DATABASE ----
 function getDB()
