@@ -26,6 +26,17 @@
 
 require_once __DIR__ . '/config.php';
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+function normalizeRedirectUri($uri)
+{
+    return rtrim(trim($uri), '/');
+}
+
+$configuredRedirectUri = normalizeRedirectUri(IG_REDIRECT_URI);
+
 // ========================================
 // CEK ERROR DARI INSTAGRAM
 // ========================================
@@ -51,6 +62,12 @@ if ($error) {
 $code = $_GET['code'] ?? null;
 
 if (!$code) {
+    $state = bin2hex(random_bytes(16));
+    $_SESSION['ig_oauth_states'][$state] = [
+        'redirect_uri' => $configuredRedirectUri,
+        'created_at'   => time(),
+    ];
+
     // Buat URL authorization menggunakan Instagram Login
     // PENTING: URL-nya instagram.com, BUKAN facebook.com
     $scopes = implode(',', [
@@ -61,12 +78,17 @@ if (!$code) {
 
     $authUrl = IG_AUTH_URL . '?' . http_build_query([
         'client_id'     => IG_APP_ID,
-        'redirect_uri'  => IG_REDIRECT_URI,
+        'redirect_uri'  => $configuredRedirectUri,
         'response_type' => 'code',
         'scope'         => $scopes,
+        'state'         => $state,
     ]);
     
-    writeLog('Redirecting to Instagram Login', ['url' => $authUrl]);
+    writeLog('Redirecting to Instagram Login', [
+        'url'          => $authUrl,
+        'redirect_uri' => $configuredRedirectUri,
+        'state'        => $state,
+    ]);
     header('Location: ' . $authUrl);
     exit;
 }
@@ -80,15 +102,31 @@ if (!$code) {
 // Hapus #_ atau spasi jika tidak sengaja terbawa di URL
 $code = str_replace('#_', '', $code);
 $code = trim($code);
+$state = $_GET['state'] ?? null;
+$tokenRedirectUri = $configuredRedirectUri;
 
-writeLog('Received OAuth code', ['code' => substr($code, 0, 20) . '...']);
+if ($state && isset($_SESSION['ig_oauth_states'][$state])) {
+    $tokenRedirectUri = normalizeRedirectUri($_SESSION['ig_oauth_states'][$state]['redirect_uri']);
+    unset($_SESSION['ig_oauth_states'][$state]);
+} else {
+    writeLog('OAuth state missing or expired; using configured redirect URI', [
+        'received_state' => $state,
+        'redirect_uri'   => $tokenRedirectUri,
+    ]);
+}
+
+writeLog('Received OAuth code', [
+    'code'         => substr($code, 0, 20) . '...',
+    'state'        => $state,
+    'redirect_uri' => $tokenRedirectUri,
+]);
 
 // POST ke https://api.instagram.com/oauth/access_token
 $postData = [
     'client_id'     => IG_APP_ID,
     'client_secret' => IG_APP_SECRET,
     'grant_type'    => 'authorization_code',
-    'redirect_uri'  => IG_REDIRECT_URI,
+    'redirect_uri'  => $tokenRedirectUri,
     'code'          => $code,
 ];
 
@@ -118,11 +156,11 @@ if (isset($tokenResponse['error_type']) || isset($tokenResponse['error'])) {
                 <p style='margin:12px 0; color:var(--danger)'>$errMsg</p>
                 <div class='code-block' style='font-size:12px; background:#f4f4f4; padding:10px; border-radius:5px;'>
                     <strong>DEBUG INFO:</strong><br>
-                    <strong>Sent Redirect URI:</strong> " . htmlspecialchars(IG_REDIRECT_URI) . "<br>
+                    <strong>Sent Redirect URI:</strong> " . htmlspecialchars($tokenRedirectUri) . "<br>
                     <strong>Sent Client ID:</strong> " . htmlspecialchars(IG_APP_ID) . "<br>
                     <strong>Response:</strong><br>" . htmlspecialchars(json_encode($tokenResponse, JSON_PRETTY_PRINT)) . "
                 </div>
-                <p style='font-size:13px; margin-top:15px'><strong>PENTING:</strong> Pastikan di Meta Dashboard, tulisan Redirect URI kamu adalah persis <code>" . htmlspecialchars(IG_REDIRECT_URI) . "</code> tanpa spasi dan tanpa garis miring di akhir!</p>
+                <p style='font-size:13px; margin-top:15px'><strong>PENTING:</strong> Jangan refresh link callback lama. Klik tombol Hubungkan Instagram dari dashboard supaya kode OAuth baru dibuat dengan Redirect URI <code>" . htmlspecialchars($tokenRedirectUri) . "</code>.</p>
                 <a href='index.php' class='btn btn-primary' style='margin-top:16px'>← Kembali</a>
             </div>
         </div>
