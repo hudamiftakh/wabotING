@@ -36,6 +36,7 @@ function getDB()
     static $pdo = null;
     if ($pdo === null) {
         try {
+            // Terkoneksi langsung ke database (lebih aman untuk hosting/cPanel)
             $pdo = new PDO(
                 "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4",
                 DB_USER,
@@ -46,6 +47,16 @@ function getDB()
                     PDO::ATTR_EMULATE_PREPARES => false,
                 ]
             );
+
+            // Cek apakah tabel utama sudah ada, jika belum jalankan db.sql
+            $tableExists = $pdo->query("SHOW TABLES LIKE 'access_tokens'")->rowCount() > 0;
+            if (!$tableExists && file_exists(__DIR__ . '/db.sql')) {
+                $sql = file_get_contents(__DIR__ . '/db.sql');
+                $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
+                $pdo->exec($sql);
+                $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+            }
+            
         } catch (PDOException $e) {
             die("Koneksi database gagal: " . $e->getMessage());
         }
