@@ -372,6 +372,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Auto-refresh webhook logs setiap 10 detik
     startAutoRefresh();
+
+    // Cek status sukses dari URL callback
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('status') === 'success') {
+        const username = urlParams.get('username') ? '@' + decodeURIComponent(urlParams.get('username')) : 'Instagram';
+        showToast(`✅ Akun ${username} berhasil terhubung!`);
+        // Bersihkan query parameters dari URL agar tidak memicu toast lagi saat di-refresh
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
 });
 
 // ---- TAB SWITCHING ----
