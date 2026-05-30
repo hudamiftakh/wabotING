@@ -87,8 +87,10 @@ class Dashboard extends CI_Controller
 
     private function encodeOAuthState($redirectUri)
     {
+        $userData = useraAuthData();
         $payload = [
             'redirect_uri' => $redirectUri,
+            'user_email'   => $userData['email'] ?? null,
             'nonce'        => bin2hex(random_bytes(12)),
             'created_at'   => time(),
         ];
@@ -123,6 +125,39 @@ class Dashboard extends CI_Controller
         }
 
         return $payload;
+    }
+
+    private function restoreSessionFromEmail($email)
+    {
+        if (!$email || !empty($this->session->userdata['username'])) {
+            return;
+        }
+
+        $user = $this->db->get_where('users', ['email' => $email])->row_array();
+        if (!$user) {
+            writeLog('OAuth callback could not restore session: user not found', ['email' => $email]);
+            return;
+        }
+
+        $this->session->set_userdata([
+            'username' => [
+                'id' => $user['id'],
+                'email' => $user['email'],
+                'name' => $user['name'] ?? $user['nama'] ?? $user['email'],
+                'nama' => $user['nama'] ?? $user['name'] ?? null,
+                'given_name' => $user['given_name'] ?? null,
+                'family_name' => $user['family_name'] ?? null,
+                'picture' => $user['picture'] ?? null,
+                'locale' => $user['locale'] ?? null,
+                'level' => $user['level'] ?? 'user',
+                'logged_in' => true,
+            ]
+        ]);
+
+        writeLog('OAuth callback restored dashboard session from state', [
+            'email' => $email,
+            'user_id' => $user['id'],
+        ]);
     }
 
     public function instagram_login()
@@ -190,6 +225,7 @@ class Dashboard extends CI_Controller
 
         if ($statePayload) {
             $tokenRedirectUri = $this->normalizeRedirectUri($statePayload['redirect_uri']);
+            $this->restoreSessionFromEmail($statePayload['user_email'] ?? null);
         } else {
             writeLog('OAuth state invalid or mismatch', [
                 'state' => $state,
@@ -266,7 +302,13 @@ class Dashboard extends CI_Controller
         $name = $profile['name'] ?? null;
 
         $userData = useraAuthData();
-        $user_email = $userData['email'] ?? null;
+        $user_email = $userData['email'] ?? ($statePayload['user_email'] ?? null);
+        if (!$user_email) {
+            writeLog('Instagram Callback Warning: owner user_email is empty', [
+                'session_has_username' => !empty($this->session->userdata['username']),
+                'state_payload' => $statePayload,
+            ]);
+        }
 
         $tokenData = [
             'user_email' => $user_email,
@@ -290,7 +332,10 @@ class Dashboard extends CI_Controller
             $this->db->insert('access_tokens', $tokenData);
         }
 
-        writeLog('Token saved to database in Controller', ['ig_user_id' => $ig_user_id]);
+        writeLog('Token saved to database in Controller', [
+            'ig_user_id' => $ig_user_id,
+            'user_email' => $user_email,
+        ]);
 
         redirect('dashboard?status=success&username=' . urlencode($username));
         exit;

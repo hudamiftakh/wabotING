@@ -97,8 +97,9 @@ if (file_exists($secrets_file)) {
 defined('IG_APP_ID') or define('IG_APP_ID', $secrets['ig_app_id'] ?? '1884605762223955');
 defined('IG_APP_SECRET') or define('IG_APP_SECRET', $secrets['ig_app_secret'] ?? '7d1308f9cf8ff678456d34544411412d');
 
-$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)) ? "https://" : "http://";
-$host = $_SERVER['HTTP_HOST'] ?? 'ing.wabot.web.id';
+$forwardedProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? null;
+$protocol = ($forwardedProto === 'https' || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)) ? "https://" : "http://";
+$host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? ($_SERVER['HTTP_HOST'] ?? 'ing.wabot.web.id');
 // CI3 Callback controller method
 defined('IG_REDIRECT_URI') or define('IG_REDIRECT_URI', $protocol . $host . '/dashboard/instagram_callback');
 

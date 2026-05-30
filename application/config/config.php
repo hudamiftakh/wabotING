@@ -23,8 +23,10 @@ defined('BASEPATH') or exit('No direct script access allowed');
 | a PHP script and you can easily do that on your own.
 |
 */
-$base_url = ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on") ? "https" : "http");
-$base_url .= "://" . @$_SERVER['HTTP_HOST'];
+$forwarded_proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? null;
+$forwarded_host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? null;
+$base_url = (($forwarded_proto === 'https' || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on")) ? "https" : "http");
+$base_url .= "://" . ($forwarded_host ?: @$_SERVER['HTTP_HOST']);
 $base_url .=     str_replace(basename($_SERVER['SCRIPT_NAME']), "", $_SERVER['SCRIPT_NAME']);
 $config['base_url'] = $base_url;
 
