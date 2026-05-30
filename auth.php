@@ -84,17 +84,18 @@ $code = trim($code);
 writeLog('Received OAuth code', ['code' => substr($code, 0, 20) . '...']);
 
 // POST ke https://api.instagram.com/oauth/access_token
-// PENTING: Instagram versi lama sering mewajibkan multipart/form-data, bukan url-encoded.
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, IG_TOKEN_URL);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, [
+$postData = [
     'client_id'     => IG_APP_ID,
     'client_secret' => IG_APP_SECRET,
     'grant_type'    => 'authorization_code',
     'redirect_uri'  => IG_REDIRECT_URI,
     'code'          => $code,
-]);
+];
+
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, IG_TOKEN_URL);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData)); // Gunakan url-encoded standar
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 $response = curl_exec($ch);
@@ -114,7 +115,13 @@ if (isset($tokenResponse['error_type']) || isset($tokenResponse['error'])) {
             <div class='card'>
                 <h2>❌ Gagal Mendapatkan Token</h2>
                 <p style='margin:12px 0; color:var(--danger)'>$errMsg</p>
-                <div class='code-block'>" . htmlspecialchars(json_encode($tokenResponse, JSON_PRETTY_PRINT)) . "</div>
+                <div class='code-block' style='font-size:12px; background:#f4f4f4; padding:10px; border-radius:5px;'>
+                    <strong>DEBUG INFO:</strong><br>
+                    <strong>Sent Redirect URI:</strong> " . htmlspecialchars(IG_REDIRECT_URI) . "<br>
+                    <strong>Sent Client ID:</strong> " . htmlspecialchars(IG_APP_ID) . "<br>
+                    <strong>Response:</strong><br>" . htmlspecialchars(json_encode($tokenResponse, JSON_PRETTY_PRINT)) . "
+                </div>
+                <p style='font-size:13px; margin-top:15px'><strong>PENTING:</strong> Pastikan di Meta Dashboard, tulisan Redirect URI kamu adalah persis <code>" . htmlspecialchars(IG_REDIRECT_URI) . "</code> tanpa spasi dan tanpa garis miring di akhir!</p>
                 <a href='index.php' class='btn btn-primary' style='margin-top:16px'>← Kembali</a>
             </div>
         </div>
