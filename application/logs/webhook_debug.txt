@@ -1,0 +1,21 @@
+2026-05-29 11:16:03
+{"event":"connection","sessionId":"81330743343","timestamp":"2026-05-29T04:16:03.688Z","data":{"status":"connecting","sessionId":"81330743343"}}
+
+2026-05-29 11:16:03
+{"event":"connection","sessionId":"81330743343","timestamp":"2026-05-29T04:16:03.968Z","data":{"status":"disconnected","sessionId":"81330743343","reason":"WebSocket Error ()","disconnectReason":"connectionLost","statusCode":408}}
+
+2026-05-29 11:16:08
+{"event":"connection","sessionId":"81330743343","timestamp":"2026-05-29T04:16:08.767Z","data":{"status":"connecting","sessionId":"81330743343"}}
+
+2026-05-29 11:16:10
+{"event":"connection","sessionId":"81330743343","timestamp":"2026-05-29T04:16:10.291Z","data":{"status":"connected","sessionId":"81330743343"}}
+
+2026-05-29 11:16:27
+{"event":"message","sessionId":"81330743343","timestamp":"2026-05-29T04:16:27.367Z","data":{"key":{"remoteJid":"14710397206593@lid","remoteJidAlt":"6285748496135@s.whatsapp.net","fromMe":false,"id":"ACFFE811D9A63EA1D8DF8E41749CBF8F","participant":"","addressingMode":"lid"},"messageId":"ACFFE811D9A63EA1D8DF8E41749CBF8F","from":"14710397206593@lid","fromMe":false,"pushName":"Miftahul Huda","message":{"conversation":"Halo","messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"RPut6vDrN9g6/A==","senderTimestamp":"1779855904","recipientKeyHash":"BepW2qkpxujz7A==","recipientTimestamp":"1779675729"},"deviceListMetadataVersion":2,"messageSecret":"o1OJpGHavRgKOMlBCdrl6FNDBjInSjfOTE4ONzXGiqw="}},"messageType":"conversation","timestamp":1780028191}}
+
+2026-05-29 11:16:44
+{"event":"message","sessionId":"81330743343","timestamp":"2026-05-29T04:16:44.253Z","data":{"key":{"remoteJid":"14710397206593@lid","remoteJidAlt":"6285748496135@s.whatsapp.net","fromMe":false,"id":"AC844B3CF8DF537481BB47A29BD91C3F","participant":"","addressingMode":"lid"},"messageId":"AC844B3CF8DF537481BB47A29BD91C3F","from":"14710397206593@lid","fromMe":false,"pushName":"Miftahul Huda","message":{"conversation":"Halo","messageContextInfo":{"deviceListMetadata":{"senderKeyHash":"RPut6vDrN9g6/A==","senderTimestamp":"1779855904","recipientKeyHash":"BepW2qkpxujz7A==","recipientTimestamp":"1779675729"},"deviceListMetadataVersion":2,"messageSecret":"9O4WHk9UqfDzLk3Z6yB4BRZPmYPv8BmQqgA04S8Ximc="}},"messageType":"conversation","timestamp":1780028208}}
+
+2026-05-29 11:17:47
+
+

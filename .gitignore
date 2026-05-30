@@ -1,0 +1,36 @@
+# CodeIgniter 3 Git Ignore rules
+
+# System & Application Core Paths
+/system/
+/vendor/
+
+# User session, cache, and log paths
+/application/cache/*
+!/application/cache/index.html
+
+/application/logs/*
+!/application/logs/index.html
+!/application/logs/webhook_debug.txt
+
+/application/sessions/*
+!/application/sessions/index.html
+
+# Local logs and temporary backups
+/backup_old/
+/logs/
+*.log
+
+# Composer dependencies
+composer.phar
+
+# IDE Settings & Operating System temp files
+.idea/
+.vscode/
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Local secrets configuration
+/application/config/secrets.php
+
