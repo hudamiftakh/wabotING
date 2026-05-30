@@ -260,6 +260,52 @@ class Dashboard extends CI_Controller
         ];
     }
 
+    private function getRequiredInstagramScopes()
+    {
+        return [
+            'instagram_business_basic',
+            'instagram_business_manage_messages',
+            'instagram_business_manage_comments',
+            'instagram_business_content_publish',
+            'instagram_business_manage_insights',
+        ];
+    }
+
+    private function getGrantedScopesFromTokenResponse($tokenResponse)
+    {
+        if (!is_array($tokenResponse)) {
+            return [];
+        }
+
+        $scopeValue = $tokenResponse['permissions'] ?? $tokenResponse['scope'] ?? $tokenResponse['granted_scopes'] ?? null;
+        if (is_string($scopeValue)) {
+            return array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', $scopeValue))));
+        }
+
+        if (is_array($scopeValue)) {
+            return array_values(array_filter(array_map('strval', $scopeValue)));
+        }
+
+        return [];
+    }
+
+    private function logGrantedInstagramScopes($tokenResponse)
+    {
+        $grantedScopes = $this->getGrantedScopesFromTokenResponse($tokenResponse);
+        $missingScopes = $grantedScopes ? array_values(array_diff($this->getRequiredInstagramScopes(), $grantedScopes)) : [];
+
+        writeLog('Instagram OAuth granted permissions', [
+            'required_scopes' => $this->getRequiredInstagramScopes(),
+            'granted_scopes' => $grantedScopes,
+            'missing_scopes' => $missingScopes,
+        ]);
+
+        return [
+            'granted' => $grantedScopes,
+            'missing' => $missingScopes,
+        ];
+    }
+
     private function subscribeInstagramWebhooks($accessToken, $igUserId)
     {
         $response = callGraphAPI($this->igGraphUrl('/' . rawurlencode((string)$igUserId) . '/subscribed_apps'), 'POST', [
@@ -349,13 +395,7 @@ class Dashboard extends CI_Controller
         $configuredRedirectUri = $this->normalizeRedirectUri(IG_REDIRECT_URI);
         $state = $this->encodeOAuthState($configuredRedirectUri);
         
-        $scopes = implode(',', [
-            'instagram_business_basic',
-            'instagram_business_manage_messages',
-            'instagram_business_manage_comments',
-            'instagram_business_content_publish',
-            'instagram_business_manage_insights',
-        ]);
+        $scopes = implode(',', $this->getRequiredInstagramScopes());
 
         $authUrl = IG_AUTH_URL . '?' . http_build_query([
             'force_reauth'  => 'true',
@@ -484,6 +524,9 @@ class Dashboard extends CI_Controller
             return;
         }
 
+        // User sudah klik Allow; token ini adalah hasil izin OAuth yang diberikan.
+        $permissionInfo = $this->logGrantedInstagramScopes($tokenResponse);
+
         $shortLivedToken = $tokenResponse['access_token'];
         $igUserId = $tokenResponse['user_id'];
 
@@ -499,9 +542,6 @@ class Dashboard extends CI_Controller
         $expiresIn = $longLivedResponse['expires_in'] ?? 3600;
         $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
         $tokenType = $longLivedResponse['token_type'] ?? 'bearer';
-
-        // Install webhook subscriptions for this Instagram professional account.
-        $subscriptionResponse = $this->subscribeInstagramWebhooks($accessToken, $igUserId);
 
         // 4. Ambil Profil User
         $profile = $this->fetchInstagramProfile($accessToken, $igUserId);
@@ -551,9 +591,13 @@ class Dashboard extends CI_Controller
             $this->db->insert('access_tokens', $tokenData);
         }
 
+        // Token permission sudah disimpan; setelah itu baru pasang subscription webhook.
+        $subscriptionResponse = $this->subscribeInstagramWebhooks($accessToken, $ig_user_id);
+
         writeLog('Token saved to database in Controller', [
             'ig_user_id' => $ig_user_id,
             'user_email' => $user_email,
+            'permissions' => $permissionInfo,
             'webhook_subscription' => $subscriptionResponse,
         ]);
 
