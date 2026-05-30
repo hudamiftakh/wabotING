@@ -205,10 +205,9 @@ if (($_temp = realpath($system_path)) !== FALSE) {
 }
 
 // Is the system path correct?
-echo "<!-- Debug: system_path = " . htmlspecialchars($system_path) . " | realpath = " . var_export(realpath($system_path), true) . " | is_dir = " . (is_dir($system_path) ? 'yes' : 'no') . " -->";
 if (! is_dir($system_path)) {
 	header('HTTP/1.1 503 Service Unavailable.', TRUE, 503);
-	echo 'Your system folder path does not appear to be set correctly. Please open the following file and correct this: ' . pathinfo(__FILE__, PATHINFO_BASENAME) . ' (Path: ' . htmlspecialchars($system_path) . ')';
+	echo 'Your system folder path does not appear to be set correctly. Please open the following file and correct this: ' . pathinfo(__FILE__, PATHINFO_BASENAME);
 	exit(3); // EXIT_CONFIG
 }
 

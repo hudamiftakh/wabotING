@@ -1,8 +1,8 @@
 # CodeIgniter 3 Git Ignore rules
 
 # System & Application Core Paths
-/system/
-/vendor/
+# /system/
+# /vendor/
 
 # User session, cache, and log paths
 /application/cache/*
