@@ -275,6 +275,75 @@ class Dashboard extends CI_Controller
         return $response;
     }
 
+    private function fetchInstagramMediaList($accessToken)
+    {
+        $fieldSets = [
+            'id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count',
+            'id,caption,media_type,media_url,permalink,timestamp',
+            'id,media_type,media_url,permalink,timestamp',
+            'id,media_type,timestamp',
+        ];
+
+        $lastResponse = null;
+        foreach ($fieldSets as $fields) {
+            $response = callGraphAPI($this->igGraphUrl('/me/media'), 'GET', [
+                'access_token' => $accessToken,
+                'fields' => $fields,
+                'limit' => 20,
+            ]);
+
+            writeLog('Media Sync Attempt', [
+                'fields' => $fields,
+                'response' => $response,
+            ]);
+
+            $lastResponse = $response;
+            if (is_array($response) && !isset($response['error'])) {
+                return $response;
+            }
+        }
+
+        return $lastResponse ?: ['error' => ['message' => 'Media Instagram tidak mengembalikan response.']];
+    }
+
+    private function fetchInstagramComments($accessToken, $mediaId, $includeReplies = false)
+    {
+        $fieldSets = $includeReplies
+            ? [
+                'id,text,timestamp,like_count,replies{id,text,timestamp}',
+                'id,text,timestamp,replies{id,text,timestamp}',
+                'id,text,timestamp',
+                'id,text',
+            ]
+            : [
+                'id,text,timestamp,like_count',
+                'id,text,timestamp',
+                'id,text',
+            ];
+
+        $lastResponse = null;
+        foreach ($fieldSets as $fields) {
+            $response = callGraphAPI($this->igGraphUrl('/' . rawurlencode((string)$mediaId) . '/comments'), 'GET', [
+                'access_token' => $accessToken,
+                'fields' => $fields,
+                'limit' => 50,
+            ]);
+
+            writeLog('Comments Sync Attempt', [
+                'media_id' => $mediaId,
+                'fields' => $fields,
+                'response' => $response,
+            ]);
+
+            $lastResponse = $response;
+            if (is_array($response) && !isset($response['error'])) {
+                return $response;
+            }
+        }
+
+        return $lastResponse ?: ['error' => ['message' => 'Komentar Instagram tidak mengembalikan response.']];
+    }
+
     public function instagram_login()
     {
         $configuredRedirectUri = $this->normalizeRedirectUri(IG_REDIRECT_URI);
@@ -1127,11 +1196,7 @@ class Dashboard extends CI_Controller
             }
 
             // Panggil API
-            $response = callGraphAPI($this->igGraphUrl('/me/media'), 'GET', [
-                'access_token' => $token,
-                'fields' => 'id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count',
-                'limit' => 20,
-            ]);
+            $response = $this->fetchInstagramMediaList($token);
 
             if (isset($response['error'])) {
                 $this->json_res(['success' => false, 'error' => $response['error']['message']]);
@@ -1164,11 +1229,7 @@ class Dashboard extends CI_Controller
                     $this->db->insert('media', $mediaData);
                 }
 
-                $commentsResponse = callGraphAPI($this->igGraphUrl('/' . rawurlencode((string)$media_id) . '/comments'), 'GET', [
-                    'access_token' => $token,
-                    'fields' => 'id,text,timestamp,like_count',
-                    'limit' => 50,
-                ]);
+                $commentsResponse = $this->fetchInstagramComments($token, $media_id);
 
                 if (!isset($commentsResponse['error'])) {
                     foreach (($commentsResponse['data'] ?? []) as $comment) {
@@ -1221,11 +1282,7 @@ class Dashboard extends CI_Controller
             }
             $token = $tokenRow['access_token'];
 
-            $response = callGraphAPI($this->igGraphUrl('/' . rawurlencode((string)$mediaId) . '/comments'), 'GET', [
-                'access_token' => $token,
-                'fields' => 'id,text,timestamp,like_count,replies{id,text,timestamp}',
-                'limit' => 50,
-            ]);
+            $response = $this->fetchInstagramComments($token, $mediaId, true);
 
             if (isset($response['error'])) {
                 $this->json_res(['success' => false, 'error' => $response['error']['message']]);
