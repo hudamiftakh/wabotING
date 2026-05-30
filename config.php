@@ -15,7 +15,7 @@ define('DB_PASS', 'jombang2017');
 
 // ---- KONFIGURASI INSTAGRAM/META APP ----
 define('IG_APP_ID', '2496439197475089');                    // ID Aplikasi Meta (Bukan Instagram App ID)
-define('IG_APP_SECRET', '44e7b972c8edfcaebc916ae5c565a4b6'); // Rahasia Aplikasi Meta
+define('IG_APP_SECRET', 'c19cfd880b5f5e37f806dc6f826c5929'); // Rahasia Aplikasi Meta
 define('IG_REDIRECT_URI', 'https://ing.wabot.web.id/auth.php');   // ⚠️ GANTI! Harus HTTPS & terdaftar di Meta Dashboard
 
 // Token verifikasi untuk webhook (buat sendiri, bebas apa saja)
