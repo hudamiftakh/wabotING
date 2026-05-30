@@ -205,7 +205,7 @@ $postData = [
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, IG_TOKEN_URL);
 curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, $postData); // Instagram token endpoint expects form-data
+curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData)); // Menggunakan application/x-www-form-urlencoded
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 $response = curl_exec($ch);
