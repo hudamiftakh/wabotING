@@ -285,6 +285,28 @@ $profile = callGraphAPI(IG_GRAPH_API_BASE . '/me', 'GET', [
 
 writeLog('Profile Response', $profile);
 
+// Cek jika ada error dari pemanggilan profile
+if (isset($profile['error']) || !isset($profile['user_id'])) {
+    $errMsg = $profile['error']['message'] ?? 'Gagal mengambil data profil dari Instagram.';
+    writeLog('Profile Fetch Error', $profile);
+    die("
+        <link rel='stylesheet' href='assets/style.css'>
+        <div class='container' style='margin-top:50px'>
+            <div class='card'>
+                <h2>❌ Gagal Mengambil Profil</h2>
+                <p style='margin:12px 0; color:var(--danger)'>$errMsg</p>
+                <div class='code-block' style='font-size:12px; background:#f4f4f4; padding:10px; border-radius:5px;'>
+                    <strong>DEBUG INFO:</strong><br>
+                    <strong>App Debug Version:</strong> " . htmlspecialchars($oauthDebugVersion) . "<br>
+                    <strong>Instagram User ID:</strong> " . htmlspecialchars($igUserId) . "<br>
+                    <strong>Response:</strong><br>" . htmlspecialchars(json_encode($profile, JSON_PRETTY_PRINT)) . "
+                </div>
+                <a href='index.php' class='btn btn-primary' style='margin-top:16px'>← Kembali ke Dashboard</a>
+            </div>
+        </div>
+    ");
+}
+
 // ========================================
 // STEP 5: SIMPAN KE DATABASE
 // ========================================
@@ -367,6 +389,19 @@ $profilePic = $profile['profile_picture_url'] ?? null;
             <h3>🔑 Info Token</h3>
             <p><strong>Tipe:</strong> <?= $expiresIn > 3600 ? 'Long-lived (60 hari)' : 'Short-lived (1 jam)' ?></p>
             <p><strong>Berlaku sampai:</strong> <?= htmlspecialchars($expiresAt) ?></p>
+
+            <div style="margin-top: 18px; margin-bottom: 18px;">
+                <label style="font-weight: 600; display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text);">Access Token:</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="accessTokenInput" value="<?= htmlspecialchars($accessToken) ?>" readonly 
+                           style="flex: 1; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: monospace; font-size: 0.85rem;"
+                           onclick="this.select();">
+                    <button onclick="copyToken()" id="copyBtn" class="btn btn-primary" style="padding: 10px 16px; font-size: 0.9rem; margin-top: 0; white-space: nowrap;">
+                        📋 Salin Token
+                    </button>
+                </div>
+            </div>
+
             <?php if ($expiresIn > 3600): ?>
                 <div class="alert alert-success" style="margin-top: 12px;">
                     <strong>✅ Long-lived token berhasil!</strong>
@@ -386,5 +421,28 @@ $profilePic = $profile['profile_picture_url'] ?? null;
         </div>
     </div>
 </div>
+
+<script>
+function copyToken() {
+    const tokenInput = document.getElementById('accessTokenInput');
+    const copyBtn = document.getElementById('copyBtn');
+    
+    tokenInput.select();
+    tokenInput.setSelectionRange(0, 99999); // Untuk perangkat mobile
+    
+    navigator.clipboard.writeText(tokenInput.value).then(() => {
+        const originalText = copyBtn.innerHTML;
+        copyBtn.innerHTML = '✅ Tersalin!';
+        copyBtn.style.background = 'var(--success)';
+        
+        setTimeout(() => {
+            copyBtn.innerHTML = originalText;
+            copyBtn.style.background = '';
+        }, 2000);
+    }).catch(err => {
+        alert('Gagal menyalin token: ' + err);
+    });
+}
+</script>
 </body>
 </html>

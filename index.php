@@ -102,9 +102,12 @@ $accounts = $db->query("SELECT * FROM access_tokens ORDER BY updated_at DESC")->
                             </span>
                         </td>
                         <td><?= htmlspecialchars($acc['updated_at']) ?></td>
-                        <td>
+                        <td style="display: flex; gap: 8px;">
                             <button class="btn btn-sm btn-outline" onclick="fetchMedia('<?= $acc['ig_user_id'] ?>')">
                                 📥 Fetch Media
+                            </button>
+                            <button class="btn btn-sm btn-outline" style="color: var(--success); border-color: var(--success);" onclick="copyToClipboard('<?= htmlspecialchars($acc['access_token']) ?>', 'Token @<?= htmlspecialchars($acc['username']) ?>')">
+                                🔑 Salin Token
                             </button>
                         </td>
                     </tr>
@@ -580,6 +583,14 @@ function formatTime(dateStr) {
     if (isNaN(d.getTime())) return dateStr;
     return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) + ' ' +
            d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function copyToClipboard(text, label = 'Token') {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast(`📋 ${label} berhasil disalin ke clipboard!`);
+    }).catch(err => {
+        showToast('❌ Gagal menyalin token: ' + err);
+    });
 }
 
 function showToast(msg) {
