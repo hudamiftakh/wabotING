@@ -424,6 +424,7 @@ function check_and_create_db_tables()
             `from_id` VARCHAR(100) DEFAULT NULL,
             `from_username` VARCHAR(255) DEFAULT NULL,
             `text` TEXT DEFAULT NULL,
+            `like_count` INT DEFAULT 0,
             `timestamp` DATETIME DEFAULT NULL,
             `is_from_webhook` TINYINT(1) DEFAULT 0,
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -432,6 +433,9 @@ function check_and_create_db_tables()
     } else {
         if (!$ci->db->field_exists('ig_user_id', 'comments')) {
             $ci->db->query("ALTER TABLE `comments` ADD `ig_user_id` VARCHAR(100) DEFAULT NULL AFTER `comment_id`;");
+        }
+        if (!$ci->db->field_exists('like_count', 'comments')) {
+            $ci->db->query("ALTER TABLE `comments` ADD `like_count` INT DEFAULT 0 AFTER `text`;");
         }
     }
 

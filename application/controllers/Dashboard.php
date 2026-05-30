@@ -974,12 +974,13 @@ class Dashboard extends CI_Controller
                         $commentData = [
                             'comment_id' => $comment_id,
                             'ig_user_id' => $igUserId,
-                            'media_id' => $media_id,
-                            'from_username' => $comment['username'] ?? null,
-                            'text' => $comment['text'] ?? '',
-                            'timestamp' => isset($comment['timestamp']) ? date('Y-m-d H:i:s', strtotime($comment['timestamp'])) : null,
-                            'is_from_webhook' => 0
-                        ];
+                    'media_id' => $media_id,
+                    'from_username' => $comment['username'] ?? null,
+                    'text' => $comment['text'] ?? '',
+                    'like_count' => $comment['like_count'] ?? 0,
+                    'timestamp' => isset($comment['timestamp']) ? date('Y-m-d H:i:s', strtotime($comment['timestamp'])) : null,
+                    'is_from_webhook' => 0
+                ];
 
                         $commentExist = $this->db->get_where('comments', ['comment_id' => $comment_id])->row_array();
                         if ($commentExist) {
@@ -1035,6 +1036,7 @@ class Dashboard extends CI_Controller
                     'media_id' => $mediaId,
                     'from_username' => $comment['username'] ?? null,
                     'text' => $comment['text'] ?? '',
+                    'like_count' => $comment['like_count'] ?? 0,
                     'timestamp' => isset($comment['timestamp']) ? date('Y-m-d H:i:s', strtotime($comment['timestamp'])) : null,
                     'is_from_webhook' => 0
                 ];
@@ -1045,9 +1047,115 @@ class Dashboard extends CI_Controller
                     $commentData['created_at'] = date('Y-m-d H:i:s');
                     $this->db->insert('comments', $commentData);
                 }
+
+                foreach (($comment['replies']['data'] ?? []) as $reply) {
+                    $replyId = $reply['id'] ?? null;
+                    if (!$replyId) {
+                        continue;
+                    }
+
+                    $replyData = [
+                        'comment_id' => $replyId,
+                        'ig_user_id' => $igUserId,
+                        'media_id' => $mediaId,
+                        'parent_id' => $comment_id,
+                        'from_username' => $reply['username'] ?? null,
+                        'text' => $reply['text'] ?? '',
+                        'like_count' => $reply['like_count'] ?? 0,
+                        'timestamp' => isset($reply['timestamp']) ? date('Y-m-d H:i:s', strtotime($reply['timestamp'])) : null,
+                        'is_from_webhook' => 0
+                    ];
+
+                    $replyExist = $this->db->get_where('comments', ['comment_id' => $replyId])->row_array();
+                    if ($replyExist) {
+                        $this->db->where('comment_id', $replyId)->update('comments', $replyData);
+                    } else {
+                        $replyData['created_at'] = date('Y-m-d H:i:s');
+                        $this->db->insert('comments', $replyData);
+                    }
+                }
             }
 
             $this->json_res(['success' => true, 'data' => $commentsList, 'count' => count($commentsList)]);
+        } catch (Exception $e) {
+            $this->json_res(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function get_media_comments()
+    {
+        try {
+            $igUserId = $this->input->get('ig_user_id');
+            $mediaId = $this->input->get('media_id');
+            $this->assertAccountAccess($igUserId);
+
+            if (!$mediaId) {
+                $this->json_res(['success' => false, 'error' => 'media_id required']);
+            }
+
+            $media = $this->db->get_where('media', [
+                'media_id' => $mediaId,
+                'ig_user_id' => $igUserId
+            ])->row_array();
+            if (!$media) {
+                $this->json_res(['success' => false, 'error' => 'Media tidak ditemukan atau bukan milik akun ini.']);
+            }
+
+            $comments = $this->db->where('ig_user_id', $igUserId)
+                ->where('media_id', $mediaId)
+                ->order_by('COALESCE(parent_id, comment_id)', 'ASC', false)
+                ->order_by('created_at', 'ASC')
+                ->get('comments')
+                ->result_array();
+
+            $this->json_res(['success' => true, 'data' => $comments]);
+        } catch (Exception $e) {
+            $this->json_res(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function reply_comment()
+    {
+        try {
+            $igUserId = $this->input->post('ig_user_id');
+            $commentId = $this->input->post('comment_id');
+            $mediaId = $this->input->post('media_id');
+            $message = trim((string)$this->input->post('message'));
+
+            $this->assertAccountAccess($igUserId);
+            if (!$commentId || $message === '') {
+                $this->json_res(['success' => false, 'error' => 'comment_id dan message wajib diisi.']);
+            }
+
+            $tokenRow = $this->db->select('access_token,username')->get_where('access_tokens', ['ig_user_id' => $igUserId])->row_array();
+            if (!$tokenRow) {
+                $this->json_res(['success' => false, 'error' => 'Token not found']);
+            }
+
+            $response = callGraphAPI(IG_GRAPH_API_BASE . '/' . $commentId . '/replies', 'POST', [
+                'message' => $message,
+                'access_token' => $tokenRow['access_token'],
+            ]);
+
+            if (isset($response['error'])) {
+                $this->json_res(['success' => false, 'error' => $response['error']['message'] ?? 'Gagal membalas komentar.']);
+            }
+
+            $replyId = $response['id'] ?? ('local_reply_' . time() . '_' . mt_rand(1000, 9999));
+            $this->db->insert('comments', [
+                'comment_id' => $replyId,
+                'ig_user_id' => $igUserId,
+                'media_id' => $mediaId,
+                'parent_id' => $commentId,
+                'from_username' => $tokenRow['username'] ?? 'me',
+                'text' => $message,
+                'like_count' => 0,
+                'timestamp' => date('Y-m-d H:i:s'),
+                'is_from_webhook' => 0,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            $this->json_res(['success' => true, 'id' => $replyId]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
         }

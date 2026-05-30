@@ -324,6 +324,13 @@
         transition: transform 0.5s ease;
     }
 
+    .media-card-img-wrapper video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #000;
+    }
+
     .media-grid-card:hover .media-card-img-wrapper img {
         transform: scale(1.05);
     }
@@ -393,6 +400,47 @@
         height: 10px;
         border-radius: 50%;
         display: inline-block;
+    }
+
+    .instagram-actions {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 1.25rem;
+        color: #111827;
+    }
+
+    .media-comments-panel {
+        border-top: 1px solid #eef2f6;
+        background: #ffffff;
+        max-height: 340px;
+        overflow-y: auto;
+    }
+
+    .media-comment-item {
+        display: flex;
+        gap: 10px;
+        padding: 12px 0;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .media-comment-item.reply {
+        margin-left: 34px;
+        padding-top: 8px;
+    }
+
+    .media-comment-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--ig-purple), var(--ig-pink));
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.72rem;
+        font-weight: 800;
+        flex-shrink: 0;
     }
 </style>
 
@@ -1085,38 +1133,153 @@
             let html = '';
             response.data.forEach(m => {
                 const icon = m.media_type === 'IMAGE' ? '<i class="ti ti-photo me-1"></i> Gambar' : (m.media_type === 'VIDEO' ? '<i class="ti ti-video me-1"></i> Video' : '<i class="ti ti-slideshow me-1"></i> Carousel');
-                const caption = m.caption ? (m.caption.length > 90 ? m.caption.substring(0, 90) + '...' : m.caption) : '<span class="text-muted italic">Tidak ada caption</span>';
+                const caption = m.caption || '';
                 
                 // Use default placehold if no URL is returned or access is blocked
                 const mediaUrl = m.media_url ? m.media_url : 'https://placehold.co/600x600/6b46c1/ffffff?text=' + encodeURIComponent(m.media_type);
+                const mediaHtml = m.media_type === 'VIDEO'
+                    ? `<video src="${esc(mediaUrl)}" controls playsinline preload="metadata"></video>`
+                    : `<img src="${esc(mediaUrl)}" onerror="this.src='https://placehold.co/600x600/6b46c1/ffffff?text=${encodeURIComponent(m.media_type || 'MEDIA')}'">`;
+                const safeMediaId = esc(m.media_id || '');
 
                 html += `
-                <div class="col-md-6 col-lg-4">
+                <div class="col-md-6 col-xl-4">
                     <div class="card media-grid-card h-100">
                         <div class="media-card-img-wrapper">
-                            <img src="${esc(mediaUrl)}" onerror="this.src='https://placehold.co/600x600/6b46c1/ffffff?text=${m.media_type}'">
+                            ${mediaHtml}
                             <div class="media-card-overlay">
-                                <span><i class="ti ti-heart-filled text-danger me-1"></i> ${m.like_count}</span>
-                                <span><i class="ti ti-message-circle-2-filled text-white me-1"></i> ${m.comments_count}</span>
+                                <span><i class="ti ti-heart-filled text-danger me-1"></i> ${formatNumber(m.like_count || 0)}</span>
+                                <span><i class="ti ti-message-circle-2-filled text-white me-1"></i> ${formatNumber(m.comments_count || 0)}</span>
                             </div>
                         </div>
-                        <div class="card-body p-3 d-flex flex-column justify-content-between">
+                        <div class="card-body p-3 d-flex flex-column">
                             <div>
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <span class="badge bg-secondary-subtle text-secondary py-1 px-2.5 rounded-pill small fw-bold">${icon}</span>
                                     <span class="text-muted small"><i class="ti ti-clock me-1"></i>${formatTime(m.timestamp)}</span>
                                 </div>
-                                <p class="text-dark small mb-3" style="line-height:1.4;">${esc(caption)}</p>
+                                <div class="instagram-actions mb-2">
+                                    <i class="ti ti-heart"></i>
+                                    <button class="btn btn-link p-0 text-dark" onclick='loadMediaComments(${JSON.stringify(m.media_id || '')})'><i class="ti ti-message-circle"></i></button>
+                                    ${m.permalink ? `<a href="${esc(m.permalink)}" target="_blank" class="text-dark"><i class="ti ti-send"></i></a>` : '<i class="ti ti-send"></i>'}
+                                </div>
+                                <div class="fw-bold text-dark small mb-1">${formatNumber(m.like_count || 0)} suka</div>
+                                <p class="text-dark small mb-2" style="line-height:1.4;"><span class="fw-bold">@${esc(activeUsername || 'instagram')}</span> ${caption ? esc(caption) : '<span class="text-muted">Tidak ada caption</span>'}</p>
+                                <button class="btn btn-link text-muted small p-0 mb-2 text-start" onclick='loadMediaComments(${JSON.stringify(m.media_id || '')})'>
+                                    Lihat ${formatNumber(m.comments_count || 0)} komentar
+                                </button>
                             </div>
-                            <div>
-                                ${m.permalink ? `<a href="${m.permalink}" target="_blank" class="btn btn-sm btn-outline-primary w-100 rounded-3 fw-bold"><i class="ti ti-external-link me-1"></i> Lihat di Instagram</a>` : ''}
+                            <div class="media-comments-panel p-3 mt-2" id="mediaComments-${safeDomId(m.media_id)}" style="display:none;">
+                                <div class="text-muted small">Memuat komentar...</div>
                             </div>
+                            ${m.permalink ? `<a href="${esc(m.permalink)}" target="_blank" class="btn btn-sm btn-outline-primary w-100 rounded-3 fw-bold mt-3"><i class="ti ti-external-link me-1"></i> Buka di Instagram</a>` : ''}
                         </div>
                     </div>
                 </div>`;
             });
             container.html(html);
         });
+    }
+
+    function loadMediaComments(mediaId) {
+        if (!activeIgUserId || !mediaId) return;
+        const panel = $('#mediaComments-' + safeDomId(mediaId));
+        panel.show().html('<div class="text-muted small">Memuat komentar...</div>');
+
+        $.getJSON(API_BASE + 'get_media_comments?' + $.param({ ig_user_id: activeIgUserId, media_id: mediaId }), function(response) {
+            if (!response.success) {
+                panel.html(`<div class="text-danger small">${esc(response.error || 'Gagal memuat komentar.')}</div>`);
+                return;
+            }
+
+            const comments = response.data || [];
+            if (!comments.length) {
+                panel.html(`
+                    <div class="text-muted small mb-3">Belum ada komentar.</div>
+                    ${renderReplyBox(mediaId, '', 'Tulis komentar...')}
+                `);
+                return;
+            }
+
+            const parents = comments.filter(c => !c.parent_id);
+            const replies = {};
+            comments.filter(c => c.parent_id).forEach(c => {
+                if (!replies[c.parent_id]) replies[c.parent_id] = [];
+                replies[c.parent_id].push(c);
+            });
+
+            let html = '';
+            parents.forEach(c => {
+                html += renderMediaComment(c, mediaId, false);
+                (replies[c.comment_id] || []).forEach(reply => {
+                    html += renderMediaComment(reply, mediaId, true);
+                });
+            });
+            html += renderReplyBox(mediaId, '', 'Tulis komentar...');
+            panel.html(html);
+        });
+    }
+
+    function renderMediaComment(c, mediaId, isReply) {
+        const username = c.from_username || (isReply ? activeUsername : 'unknown');
+        const initial = username.substring(0, 1).toUpperCase();
+        return `
+            <div class="media-comment-item ${isReply ? 'reply' : ''}">
+                <div class="media-comment-avatar">${esc(initial)}</div>
+                <div class="flex-grow-1">
+                    <div class="small text-dark">
+                        <span class="fw-bold">@${esc(username)}</span>
+                        <span>${esc(c.text || '')}</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-3 mt-1">
+                        <span class="text-muted" style="font-size:0.72rem;">${formatTime(c.created_at || c.timestamp)}</span>
+                        <span class="text-muted" style="font-size:0.72rem;">${formatNumber(c.like_count || 0)} suka</span>
+                        ${!isReply ? `<button class="btn btn-link p-0 text-muted fw-bold" style="font-size:0.72rem;" onclick='showCommentReplyBox(${JSON.stringify(mediaId)}, ${JSON.stringify(c.comment_id)})'>Balas</button>` : ''}
+                    </div>
+                    ${!isReply ? `<div id="replyBox-${safeDomId(c.comment_id)}" style="display:none;">${renderReplyBox(mediaId, c.comment_id, 'Balas @' + username)}</div>` : ''}
+                </div>
+            </div>`;
+    }
+
+    function renderReplyBox(mediaId, commentId, placeholder) {
+        const targetId = commentId ? commentId : mediaId;
+        return `
+            <div class="d-flex align-items-center gap-2 mt-3">
+                <input type="text" class="form-control form-control-sm rounded-pill" id="replyInput-${safeDomId(targetId)}" placeholder="${esc(placeholder)}">
+                <button class="btn btn-sm btn-primary rounded-pill px-3" onclick='submitCommentReply(${JSON.stringify(mediaId)}, ${JSON.stringify(targetId)}, ${JSON.stringify(commentId || '')})'>Kirim</button>
+            </div>`;
+    }
+
+    function showCommentReplyBox(mediaId, commentId) {
+        $('#replyBox-' + safeDomId(commentId)).toggle();
+        $('#replyInput-' + safeDomId(commentId)).focus();
+    }
+
+    function submitCommentReply(mediaId, targetId, parentCommentId) {
+        const input = $('#replyInput-' + safeDomId(targetId));
+        const message = input.val().trim();
+        if (!message) {
+            alertify.warning('Balasan masih kosong.');
+            return;
+        }
+
+        const commentId = parentCommentId || targetId;
+        $.post(API_BASE + 'reply_comment', {
+            ig_user_id: activeIgUserId,
+            media_id: mediaId,
+            comment_id: commentId,
+            message: message
+        }, function(response) {
+            if (response.success) {
+                alertify.success('Balasan komentar terkirim.');
+                input.val('');
+                loadMediaComments(mediaId);
+                loadComments();
+                loadStats();
+            } else {
+                alertify.error(response.error || 'Gagal membalas komentar.');
+            }
+        }, 'json');
     }
 
     // ---- FETCH MESSAGES (CHAT BUBBLES VIEW) ----
@@ -1560,6 +1723,15 @@
                 minute: '2-digit',
                 second: '2-digit'
             });
+    }
+
+    function formatNumber(value) {
+        const number = parseInt(value || 0);
+        return number.toLocaleString('id-ID');
+    }
+
+    function safeDomId(value) {
+        return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_');
     }
 
     function copyToken(text, username) {

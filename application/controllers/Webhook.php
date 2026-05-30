@@ -158,6 +158,7 @@ class Webhook extends CI_Controller
             'from_id' => $value['from']['id'] ?? null,
             'from_username' => $value['from']['username'] ?? null,
             'text' => $value['text'] ?? '',
+            'like_count' => $value['like_count'] ?? 0,
             'parent_id' => $value['parent_id'] ?? null,
             'is_from_webhook' => 1,
             'timestamp' => date('Y-m-d H:i:s')

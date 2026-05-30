@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS `comments` (
     `from_id` VARCHAR(100) DEFAULT NULL COMMENT 'ID user yang komentar',
     `from_username` VARCHAR(255) DEFAULT NULL COMMENT 'Username yang komentar',
     `text` TEXT DEFAULT NULL COMMENT 'Isi komentar',
+    `like_count` INT DEFAULT 0 COMMENT 'Jumlah like komentar',
     `timestamp` DATETIME DEFAULT NULL COMMENT 'Waktu komentar dibuat',
     `is_from_webhook` TINYINT(1) DEFAULT 0 COMMENT '1=dari webhook, 0=dari API pull',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
