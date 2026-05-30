@@ -23,6 +23,10 @@ class AuthHook
             return;
         }
 
+        if ($class === 'dashboard' && $method === 'instagram_callback') {
+            return;
+        }
+
         // 2. Handle API Controller specifically
         // API endpoints use API Key auth, while UI pages in API controller need Session.
         if ($class === 'api') {

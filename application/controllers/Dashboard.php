@@ -8,7 +8,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Dashboard extends CI_Controller
 {
-    private $oauthDebugVersion = '2026-05-30-state-v3';
+    private $oauthDebugVersion = '2026-05-30-redirect-fallback-v4';
 
     public function __construct()
     {
@@ -160,6 +160,48 @@ class Dashboard extends CI_Controller
         ]);
     }
 
+    private function getApiErrorMessage($response, $fallback)
+    {
+        if (!is_array($response)) {
+            return $fallback;
+        }
+
+        if (!empty($response['error_message'])) {
+            return (string)$response['error_message'];
+        }
+
+        if (isset($response['error'])) {
+            if (is_array($response['error'])) {
+                return (string)($response['error']['message'] ?? json_encode($response['error']));
+            }
+            return (string)$response['error'];
+        }
+
+        return $fallback;
+    }
+
+    private function redirectAfterOAuth($username)
+    {
+        $target = base_url('dashboard?status=success&username=' . rawurlencode((string)$username));
+
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+
+        while (ob_get_level() > 0) {
+            @ob_end_clean();
+        }
+
+        if (!headers_sent()) {
+            header('Location: ' . $target, true, 303);
+            echo '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=' . htmlspecialchars($target, ENT_QUOTES, 'UTF-8') . '"></head><body>Redirecting...</body></html>';
+            exit;
+        }
+
+        echo '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=' . htmlspecialchars($target, ENT_QUOTES, 'UTF-8') . '"></head><body><script>window.location.replace(' . json_encode($target) . ');</script><p>Login berhasil. <a href="' . htmlspecialchars($target, ENT_QUOTES, 'UTF-8') . '">Lanjut ke dashboard</a></p></body></html>';
+        exit;
+    }
+
     public function instagram_login()
     {
         $configuredRedirectUri = $this->normalizeRedirectUri(IG_REDIRECT_URI);
@@ -192,7 +234,26 @@ class Dashboard extends CI_Controller
 
     public function instagram_callback()
     {
+        register_shutdown_function(function () {
+            $error = error_get_last();
+            if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+                writeLog('Instagram Callback Fatal Shutdown', $error);
+                if (!headers_sent()) {
+                    header('Content-Type: text/html; charset=UTF-8');
+                }
+                echo '<!doctype html><html><head><meta charset="utf-8"><title>Instagram OAuth Error</title></head><body style="font-family:Arial,sans-serif;background:#f4f7f6;padding:40px;"><div style="max-width:720px;margin:auto;background:white;border:1px solid #ddd;border-radius:12px;padding:24px;"><h1 style="color:#b91c1c;">Instagram OAuth Fatal Error</h1><p>Terjadi error fatal saat callback Instagram. Detail sudah dicatat ke log aplikasi.</p><pre style="white-space:pre-wrap;background:#111827;color:#e5e7eb;padding:14px;border-radius:8px;">' . htmlspecialchars(json_encode($error, JSON_PRETTY_PRINT)) . '</pre><p><a href="' . base_url('dashboard') . '">Kembali ke Dashboard</a></p></div></body></html>';
+            }
+        });
+
+        try {
         $configuredRedirectUri = $this->normalizeRedirectUri(IG_REDIRECT_URI);
+        writeLog('Instagram Callback Started', [
+            'query_keys' => array_keys($_GET),
+            'has_code' => $this->input->get('code') ? true : false,
+            'has_state' => $this->input->get('state') ? true : false,
+            'redirect_uri' => $configuredRedirectUri,
+            'session_has_username' => !empty($this->session->userdata['username']),
+        ]);
         
         // 1. Cek error dari Instagram
         $error = $this->input->get('error');
@@ -214,18 +275,17 @@ class Dashboard extends CI_Controller
         $code = trim($code);
         $state = $this->input->get('state');
 
-        if (!$state) {
-            writeLog('Instagram Callback Error: Missing state');
-            $this->show_oauth_error('State Missing', 'Link callback tidak berisi state token.', 'Link callback kemungkinan sudah kadaluarsa.');
-            return;
-        }
-
         $tokenRedirectUri = $configuredRedirectUri;
         $statePayload = $this->decodeOAuthState($state);
 
         if ($statePayload) {
             $tokenRedirectUri = $this->normalizeRedirectUri($statePayload['redirect_uri']);
             $this->restoreSessionFromEmail($statePayload['user_email'] ?? null);
+        } elseif (!$state) {
+            writeLog('Instagram Callback Warning: Missing state, continuing with active session fallback', [
+                'redirect_uri' => $tokenRedirectUri,
+                'session_has_username' => !empty($this->session->userdata['username']),
+            ]);
         } else {
             writeLog('OAuth state invalid or mismatch', [
                 'state' => $state,
@@ -253,17 +313,29 @@ class Dashboard extends CI_Controller
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlErr = curl_error($ch);
         curl_close($ch);
 
         $tokenResponse = $response ? json_decode($response, true) : ['error' => 'cURL fail: ' . $curlErr];
-        writeLog('Short-lived Token Response', $tokenResponse);
+        writeLog('Short-lived Token Response', [
+            'http_code' => $httpCode,
+            'curl_error' => $curlErr,
+            'response' => $tokenResponse,
+        ]);
 
         if (isset($tokenResponse['error_type']) || isset($tokenResponse['error'])) {
-            $errMsg = $tokenResponse['error_message'] ?? $tokenResponse['error']['message'] ?? 'Gagal menukarkan kode.';
+            $errMsg = $this->getApiErrorMessage($tokenResponse, 'Gagal menukarkan kode.');
             $this->show_oauth_error('Gagal Mendapatkan Token', $errMsg, json_encode($tokenResponse));
+            return;
+        }
+
+        if (empty($tokenResponse['access_token']) || empty($tokenResponse['user_id'])) {
+            $this->show_oauth_error('Token Tidak Lengkap', 'Instagram tidak mengembalikan access_token atau user_id.', json_encode($tokenResponse));
             return;
         }
 
@@ -291,7 +363,7 @@ class Dashboard extends CI_Controller
         writeLog('Profile Response', $profile);
 
         if (isset($profile['error']) || !isset($profile['user_id'])) {
-            $errMsg = $profile['error']['message'] ?? 'Gagal mengambil data profil dari Instagram.';
+            $errMsg = $this->getApiErrorMessage($profile, 'Gagal mengambil data profil dari Instagram.');
             $this->show_oauth_error('Gagal Mengambil Profil', $errMsg, json_encode($profile));
             return;
         }
@@ -337,8 +409,22 @@ class Dashboard extends CI_Controller
             'user_email' => $user_email,
         ]);
 
-        redirect('dashboard?status=success&username=' . urlencode($username));
-        exit;
+        $this->redirectAfterOAuth($username);
+        } catch (Exception $e) {
+            writeLog('Instagram Callback Exception', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            $this->show_oauth_error('Callback Error', $e->getMessage(), $e->getTraceAsString());
+        } catch (Throwable $e) {
+            writeLog('Instagram Callback Throwable', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            $this->show_oauth_error('Callback Error', $e->getMessage(), $e->getTraceAsString());
+        }
     }
 
     private function show_oauth_error($title, $msg, $debug)

@@ -266,6 +266,7 @@ function callGraphAPI($url, $method = 'GET', $data = [])
         CURLOPT_URL => $url,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_TIMEOUT => 30,
     ]);
 
