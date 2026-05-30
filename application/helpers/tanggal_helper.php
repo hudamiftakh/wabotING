@@ -418,6 +418,7 @@ function check_and_create_db_tables()
         $ci->db->query("CREATE TABLE `comments` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
             `comment_id` VARCHAR(100) NOT NULL,
+            `ig_user_id` VARCHAR(100) DEFAULT NULL,
             `media_id` VARCHAR(100) DEFAULT NULL,
             `parent_id` VARCHAR(100) DEFAULT NULL,
             `from_id` VARCHAR(100) DEFAULT NULL,
@@ -428,6 +429,10 @@ function check_and_create_db_tables()
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY `uk_comment_id` (`comment_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    } else {
+        if (!$ci->db->field_exists('ig_user_id', 'comments')) {
+            $ci->db->query("ALTER TABLE `comments` ADD `ig_user_id` VARCHAR(100) DEFAULT NULL AFTER `comment_id`;");
+        }
     }
 
     // 6. Table: media
@@ -454,6 +459,7 @@ function check_and_create_db_tables()
         $ci->db->query("CREATE TABLE `messages` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
             `message_id` VARCHAR(100) NOT NULL,
+            `ig_user_id` VARCHAR(100) DEFAULT NULL,
             `sender_id` VARCHAR(100) DEFAULT NULL,
             `recipient_id` VARCHAR(100) DEFAULT NULL,
             `message_text` TEXT DEFAULT NULL,
@@ -463,6 +469,75 @@ function check_and_create_db_tables()
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY `uk_message_id` (`message_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    } else {
+        if (!$ci->db->field_exists('ig_user_id', 'messages')) {
+            $ci->db->query("ALTER TABLE `messages` ADD `ig_user_id` VARCHAR(100) DEFAULT NULL AFTER `message_id`;");
+        }
+        $ci->db->query("UPDATE `messages` m
+            JOIN `access_tokens` a ON a.ig_user_id = m.sender_id OR a.ig_user_id = m.recipient_id
+            SET m.ig_user_id = a.ig_user_id
+            WHERE m.ig_user_id IS NULL;");
+    }
+
+    // 8. Table: reply_templates
+    if (!$ci->db->table_exists('reply_templates')) {
+        $ci->db->query("CREATE TABLE `reply_templates` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `user_email` VARCHAR(255) DEFAULT NULL,
+            `ig_user_id` VARCHAR(100) DEFAULT NULL,
+            `name` VARCHAR(120) NOT NULL,
+            `channel` VARCHAR(20) DEFAULT 'all',
+            `keyword` VARCHAR(120) DEFAULT NULL,
+            `response_text` TEXT NOT NULL,
+            `is_active` TINYINT(1) DEFAULT 1,
+            `auto_reply` TINYINT(1) DEFAULT 0,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    } else {
+        $replyTemplateColumns = [
+            'user_email' => "ALTER TABLE `reply_templates` ADD `user_email` VARCHAR(255) DEFAULT NULL AFTER `id`;",
+            'ig_user_id' => "ALTER TABLE `reply_templates` ADD `ig_user_id` VARCHAR(100) DEFAULT NULL AFTER `user_email`;",
+            'channel' => "ALTER TABLE `reply_templates` ADD `channel` VARCHAR(20) DEFAULT 'all' AFTER `name`;",
+            'keyword' => "ALTER TABLE `reply_templates` ADD `keyword` VARCHAR(120) DEFAULT NULL AFTER `channel`;",
+            'is_active' => "ALTER TABLE `reply_templates` ADD `is_active` TINYINT(1) DEFAULT 1 AFTER `response_text`;",
+            'auto_reply' => "ALTER TABLE `reply_templates` ADD `auto_reply` TINYINT(1) DEFAULT 0 AFTER `is_active`;",
+        ];
+        foreach ($replyTemplateColumns as $column => $query) {
+            if (!$ci->db->field_exists($column, 'reply_templates')) {
+                $ci->db->query($query);
+            }
+        }
+    }
+
+    // 9. Table: auto_reply_logs
+    if (!$ci->db->table_exists('auto_reply_logs')) {
+        $ci->db->query("CREATE TABLE `auto_reply_logs` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `template_id` INT DEFAULT NULL,
+            `ig_user_id` VARCHAR(100) DEFAULT NULL,
+            `channel` VARCHAR(20) DEFAULT NULL,
+            `target_id` VARCHAR(100) DEFAULT NULL,
+            `request_payload` JSON DEFAULT NULL,
+            `response_payload` JSON DEFAULT NULL,
+            `status` VARCHAR(30) DEFAULT 'pending',
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    } else {
+        $autoReplyLogColumns = [
+            'template_id' => "ALTER TABLE `auto_reply_logs` ADD `template_id` INT DEFAULT NULL AFTER `id`;",
+            'ig_user_id' => "ALTER TABLE `auto_reply_logs` ADD `ig_user_id` VARCHAR(100) DEFAULT NULL AFTER `template_id`;",
+            'channel' => "ALTER TABLE `auto_reply_logs` ADD `channel` VARCHAR(20) DEFAULT NULL AFTER `ig_user_id`;",
+            'target_id' => "ALTER TABLE `auto_reply_logs` ADD `target_id` VARCHAR(100) DEFAULT NULL AFTER `channel`;",
+            'request_payload' => "ALTER TABLE `auto_reply_logs` ADD `request_payload` JSON DEFAULT NULL AFTER `target_id`;",
+            'response_payload' => "ALTER TABLE `auto_reply_logs` ADD `response_payload` JSON DEFAULT NULL AFTER `request_payload`;",
+            'status' => "ALTER TABLE `auto_reply_logs` ADD `status` VARCHAR(30) DEFAULT 'pending' AFTER `response_payload`;",
+        ];
+        foreach ($autoReplyLogColumns as $column => $query) {
+            if (!$ci->db->field_exists($column, 'auto_reply_logs')) {
+                $ci->db->query($query);
+            }
+        }
     }
 }
 

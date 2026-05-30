@@ -375,6 +375,25 @@
             box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
         }
     }
+
+    .sentiment-metric {
+        border: 1px solid #eef2f6;
+        border-radius: 14px;
+        padding: 16px;
+        background: #ffffff;
+    }
+
+    .sentiment-list {
+        max-height: 330px;
+        overflow-y: auto;
+    }
+
+    .sentiment-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }
 </style>
 
 <div class="dashboard-container">
@@ -462,19 +481,26 @@
                                         <span class="small text-muted d-block mb-1" style="font-size: 0.75rem;">Instagram Account ID:</span>
                                         <code class="small text-primary bg-light-primary px-2.5 py-1.5 rounded d-block text-truncate border border-primary-subtle" style="font-size: 0.82rem;"><?= htmlspecialchars($acc['ig_user_id']) ?></code>
                                     </div>
+                                    <?php
+                                        $daysLeft = !empty($acc['expires_at']) ? floor((strtotime($acc['expires_at']) - time()) / 86400) : null;
+                                        $tokenBadge = $daysLeft === null ? ['bg-secondary-subtle text-secondary', 'Token: tidak diketahui'] : ($daysLeft < 0 ? ['bg-danger-subtle text-danger', 'Token expired'] : ($daysLeft <= 7 ? ['bg-warning-subtle text-warning', 'Token hampir expired (' . $daysLeft . ' hari)'] : ['bg-success-subtle text-success', 'Token aman (' . $daysLeft . ' hari)']));
+                                    ?>
+                                    <div class="mb-3">
+                                        <span class="badge <?= $tokenBadge[0] ?> rounded-pill px-2.5 py-1 fw-bold"><?= htmlspecialchars($tokenBadge[1]) ?></span>
+                                    </div>
                                 </div>
                                 
                                 <!-- Card Actions -->
                                 <div>
                                     <div class="d-grid gap-2">
-                                        <button class="btn btn-gradient-instagram py-2.5 rounded-3 fw-bold" onclick="openAccountDashboard('<?= $acc['ig_user_id'] ?>', '<?= htmlspecialchars($acc['username']) ?>', '<?= htmlspecialchars($acc['profile_picture_url'] ?? '') ?>')">
+                                        <button class="btn btn-gradient-instagram py-2.5 rounded-3 fw-bold" onclick='openAccountDashboard(<?= htmlspecialchars(json_encode($acc['ig_user_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($acc['username'] ?? ''), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($acc['profile_picture_url'] ?? ''), ENT_QUOTES, 'UTF-8') ?>)'>
                                             Buka Dashboard Akun 🚀
                                         </button>
                                         <div class="d-flex justify-content-between mt-1 gap-2">
-                                            <button class="btn btn-sm btn-outline-secondary flex-grow-1 py-2 fw-bold" onclick="copyToken('<?= htmlspecialchars($acc['access_token']) ?>', '<?= htmlspecialchars($acc['username']) ?>')" style="border-radius: 10px;">
+                                            <button class="btn btn-sm btn-outline-secondary flex-grow-1 py-2 fw-bold" onclick='copyToken(<?= htmlspecialchars(json_encode($acc['access_token'] ?? ''), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($acc['username'] ?? ''), ENT_QUOTES, 'UTF-8') ?>)' style="border-radius: 10px;">
                                                 <i class="ti ti-copy me-1"></i> Salin Token
                                             </button>
-                                            <button class="btn btn-sm btn-outline-danger flex-grow-1 py-2 fw-bold" onclick="deleteAccount('<?= $acc['ig_user_id'] ?>', '<?= htmlspecialchars($acc['username']) ?>')" style="border-radius: 10px;">
+                                            <button class="btn btn-sm btn-outline-danger flex-grow-1 py-2 fw-bold" onclick='deleteAccount(<?= htmlspecialchars(json_encode($acc['ig_user_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($acc['username'] ?? ''), ENT_QUOTES, 'UTF-8') ?>)' style="border-radius: 10px;">
                                                 <i class="ti ti-trash me-1"></i> Hapus
                                             </button>
                                         </div>
@@ -612,18 +638,18 @@
         <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
             <div class="card-header bg-white border-0 pt-4 px-4 pb-0">
                 <div class="d-flex border-bottom overflow-auto">
-                    <button class="tab-btn-premium active" onclick="switchTab('webhooks', this)">
-                        <span class="live-dot"></span> Webhook Logs
-                    </button>
-                    <button class="tab-btn-premium" onclick="switchTab('comments', this)">💬 Komentar</button>
+                    <button class="tab-btn-premium active" onclick="switchTab('comments', this)">💬 Komentar</button>
                     <button class="tab-btn-premium" onclick="switchTab('media', this)">📸 Media</button>
                     <button class="tab-btn-premium" onclick="switchTab('messages', this)">✉️ Pesan (DM)</button>
+                    <button class="tab-btn-premium" onclick="switchTab('sentiment', this)"><i class="ti ti-chart-donut me-1"></i> Sentimen</button>
+                    <button class="tab-btn-premium" onclick="switchTab('monitoring', this)"><i class="ti ti-activity me-1"></i> Monitoring</button>
+                    <button class="tab-btn-premium" onclick="switchTab('replies', this)"><i class="ti ti-message-reply me-1"></i> Balasan</button>
                 </div>
             </div>
 
             <div class="card-body p-4">
                 <!-- TAB: WEBHOOK LOGS -->
-                <div class="tab-content-panel" id="tab-webhooks">
+                <div class="tab-content-panel" id="tab-webhooks" style="display:none;">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="fw-bold mb-0 text-dark"><span class="live-dot"></span> Real-time Webhook Logs</h5>
                         <button class="btn btn-sm btn-outline-secondary" onclick="loadWebhookLogs()">🔄 Refresh</button>
@@ -683,16 +709,191 @@
                         <div class="text-center text-muted py-4">Memuat percakapan...</div>
                     </div>
                 </div>
+
+                <!-- TAB: ANALISIS SENTIMEN -->
+                <div class="tab-content-panel" id="tab-sentiment" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0 text-dark"><i class="ti ti-chart-donut me-1 text-primary"></i> Diagram Analisis Sentimen Akun</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="loadSentimentAnalysis()">Refresh</button>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-3">
+                            <input type="date" id="sentimentDateFrom" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="date" id="sentimentDateTo" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-2">
+                            <select id="sentimentSourceFilter" class="form-select form-select-sm">
+                                <option value="all">Semua sumber</option>
+                                <option value="comment">Komentar</option>
+                                <option value="message">DM</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="text" id="sentimentMediaFilter" class="form-control form-control-sm" placeholder="Media ID">
+                        </div>
+                        <div class="col-md-2">
+                            <select id="sentimentAnalyzer" class="form-select form-select-sm">
+                                <option value="local">Keyword lokal</option>
+                                <option value="ai">AI-ready</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="sentimentEmptyState" class="text-center text-muted py-5 bg-light rounded-4 border" style="display:none;">
+                        Belum ada komentar atau DM berisi teks untuk dianalisis.
+                    </div>
+                    <div id="sentimentDashboard">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <div class="sentiment-metric">
+                                    <span class="text-muted small d-block">Positif</span>
+                                    <h3 class="fw-bold text-success mb-0" id="sentimentPositive">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="sentiment-metric">
+                                    <span class="text-muted small d-block">Netral</span>
+                                    <h3 class="fw-bold text-secondary mb-0" id="sentimentNeutral">0</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="sentiment-metric">
+                                    <span class="text-muted small d-block">Negatif</span>
+                                    <h3 class="fw-bold text-danger mb-0" id="sentimentNegative">0</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row g-4">
+                            <div class="col-lg-5">
+                                <div class="border rounded-4 p-3 h-100">
+                                    <h6 class="fw-bold mb-3">Komposisi Sentimen</h6>
+                                    <div id="sentimentDonutChart" style="min-height: 280px;"></div>
+                                </div>
+                            </div>
+                            <div class="col-lg-7">
+                                <div class="border rounded-4 p-3 h-100">
+                                    <h6 class="fw-bold mb-3">Tren Sentimen Harian</h6>
+                                    <div id="sentimentTrendChart" style="min-height: 280px;"></div>
+                                </div>
+                            </div>
+                            <div class="col-lg-5">
+                                <div class="border rounded-4 p-3 h-100">
+                                    <h6 class="fw-bold mb-3">Sumber Percakapan</h6>
+                                    <div id="sentimentSourceChart" style="min-height: 260px;"></div>
+                                </div>
+                            </div>
+                            <div class="col-lg-7">
+                                <div class="border rounded-4 p-3 h-100">
+                                    <h6 class="fw-bold mb-3">Teks Terbaru yang Dianalisis</h6>
+                                    <div id="sentimentRecentList" class="sentiment-list"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: MONITORING & EXPORT -->
+                <div class="tab-content-panel" id="tab-monitoring" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0 text-dark"><i class="ti ti-activity me-1 text-primary"></i> Webhook Health & Export</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="loadWebhookHealth()">Refresh</button>
+                    </div>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="sentiment-metric">
+                                <span class="text-muted small d-block">Status Webhook</span>
+                                <h5 class="fw-bold mb-1" id="healthWebhookStatus">-</h5>
+                                <small class="text-muted" id="healthLastEvent">Event terakhir: -</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="sentiment-metric">
+                                <span class="text-muted small d-block">Status Token</span>
+                                <h5 class="fw-bold mb-1" id="healthTokenStatus">-</h5>
+                                <small class="text-muted" id="healthTokenExpires">Expired: -</small>
+                                <button class="btn btn-sm btn-outline-primary mt-2" onclick="refreshAccessToken()">Refresh Token</button>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="sentiment-metric">
+                                <span class="text-muted small d-block">Export Data</span>
+                                <div class="d-flex gap-2 flex-wrap mt-2">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="exportData('comments')">Komentar</button>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="exportData('messages')">DM</button>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="exportData('webhooks')">Webhook</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="border rounded-4 p-3">
+                        <h6 class="fw-bold mb-3">Ringkasan Event Webhook</h6>
+                        <div id="healthEventCounts" class="row g-2"></div>
+                    </div>
+                </div>
+
+                <!-- TAB: TEMPLATE BALASAN -->
+                <div class="tab-content-panel" id="tab-replies" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0 text-dark"><i class="ti ti-message-reply me-1 text-primary"></i> Template & Auto-reply</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="loadReplyTemplates()">Refresh</button>
+                    </div>
+                    <div class="row g-4">
+                        <div class="col-lg-5">
+                            <div class="border rounded-4 p-3">
+                                <input type="hidden" id="replyTemplateId">
+                                <div class="mb-2">
+                                    <label class="small text-muted">Nama Template</label>
+                                    <input type="text" id="replyTemplateName" class="form-control" placeholder="Contoh: Harga">
+                                </div>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-6">
+                                        <label class="small text-muted">Channel</label>
+                                        <select id="replyTemplateChannel" class="form-select">
+                                            <option value="all">Komentar & DM</option>
+                                            <option value="comment">Komentar</option>
+                                            <option value="message">DM</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="small text-muted">Keyword</label>
+                                        <input type="text" id="replyTemplateKeyword" class="form-control" placeholder="harga">
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="small text-muted">Isi Balasan</label>
+                                    <textarea id="replyTemplateText" class="form-control" rows="4" placeholder="Tulis balasan cepat..."></textarea>
+                                </div>
+                                <div class="d-flex gap-3 mb-3">
+                                    <label class="form-check-label"><input type="checkbox" id="replyTemplateActive" class="form-check-input" checked> Aktif</label>
+                                    <label class="form-check-label"><input type="checkbox" id="replyTemplateAuto" class="form-check-input"> Auto-reply</label>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-primary flex-grow-1" onclick="saveReplyTemplate()">Simpan</button>
+                                    <button class="btn btn-outline-secondary" onclick="resetReplyTemplateForm()">Reset</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-7">
+                            <div id="replyTemplatesList" class="border rounded-4 p-3" style="min-height: 260px;"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+<script src="<?php echo base_url(); ?>dist/js/apexcharts.min.js"></script>
 <script>
     const API_BASE = "<?= base_url('dashboard/'); ?>";
     const REFRESH_INTERVAL = 10000;
     let autoRefreshTimer = null;
     let latestMessageId = null;
+    let sentimentDonutChart = null;
+    let sentimentTrendChart = null;
+    let sentimentSourceChart = null;
+    let replyTemplateCache = {};
     
     // Active Account State
     let activeIgUserId = null;
@@ -715,6 +916,10 @@
         
         $('#activeAccountName').text('@' + username);
         $('#activeAccountId').text('ID: ' + igUserId);
+        $('.tab-content-panel').hide();
+        $('.tab-btn-premium').removeClass('active');
+        $('#tab-comments').show();
+        $('.tab-btn-premium').first().addClass('active');
         
         const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=8a3ab9&color=fff`;
         $('#detailProfilePic').attr('src', profilePicUrl ? profilePicUrl : fallbackAvatar);
@@ -766,6 +971,16 @@
                     container.scrollTop(container[0].scrollHeight);
                 }
             }, 50);
+        }
+
+        if (tabName === 'sentiment') {
+            loadSentimentAnalysis();
+        }
+        if (tabName === 'monitoring') {
+            loadWebhookHealth();
+        }
+        if (tabName === 'replies') {
+            loadReplyTemplates();
         }
     }
 
@@ -918,7 +1133,8 @@
             if (latestMessageId !== null) {
                 const newMsgs = response.data.filter(m => parseInt(m.id) > latestMessageId).reverse();
                 newMsgs.forEach(m => {
-                    const snippet = m.message_text.length > 40 ? m.message_text.substring(0, 40) + '...' : m.message_text;
+                    const messageText = m.message_text || '';
+                    const snippet = messageText.length > 40 ? messageText.substring(0, 40) + '...' : messageText;
                     alertify.success(`✉️ Pesan Baru: "${snippet}"`);
                 });
             }
@@ -971,12 +1187,320 @@
         });
     }
 
+    // ---- FETCH SENTIMENT ANALYSIS ----
+    function loadSentimentAnalysis() {
+        if (!activeIgUserId) return;
+        const params = $.param({
+            ig_user_id: activeIgUserId,
+            date_from: $('#sentimentDateFrom').val(),
+            date_to: $('#sentimentDateTo').val(),
+            source: $('#sentimentSourceFilter').val(),
+            media_id: $('#sentimentMediaFilter').val(),
+            analyzer: $('#sentimentAnalyzer').val()
+        });
+        $.getJSON(API_BASE + 'get_sentiment_analysis?' + params, function(response) {
+            if (!response.success) {
+                $('#sentimentEmptyState').show().text(response.error || 'Gagal memuat analisis sentimen.');
+                $('#sentimentDashboard').hide();
+                return;
+            }
+
+            const data = response.data || {};
+            const summary = data.summary || { positive: 0, neutral: 0, negative: 0, total: 0 };
+            const total = parseInt(summary.total || 0);
+
+            $('#sentimentPositive').text(summary.positive || 0);
+            $('#sentimentNeutral').text(summary.neutral || 0);
+            $('#sentimentNegative').text(summary.negative || 0);
+
+            if (total === 0) {
+                $('#sentimentEmptyState').show().text('Belum ada komentar atau DM berisi teks untuk dianalisis.');
+                $('#sentimentDashboard').hide();
+                destroySentimentCharts();
+                return;
+            }
+
+            $('#sentimentEmptyState').hide();
+            $('#sentimentDashboard').show();
+            renderSentimentCharts(data);
+            renderSentimentRecent(data.recent || []);
+        });
+    }
+
+    function destroySentimentCharts() {
+        [sentimentDonutChart, sentimentTrendChart, sentimentSourceChart].forEach(chart => {
+            if (chart) chart.destroy();
+        });
+        sentimentDonutChart = null;
+        sentimentTrendChart = null;
+        sentimentSourceChart = null;
+    }
+
+    function renderSentimentCharts(data) {
+        if (typeof ApexCharts === 'undefined') {
+            $('#sentimentDonutChart').html('<div class="text-muted text-center py-5">Library chart belum termuat.</div>');
+            return;
+        }
+
+        destroySentimentCharts();
+        const summary = data.summary || {};
+        const colors = ['#22c55e', '#94a3b8', '#ef4444'];
+
+        sentimentDonutChart = new ApexCharts(document.querySelector('#sentimentDonutChart'), {
+            chart: { type: 'donut', height: 280 },
+            series: [parseInt(summary.positive || 0), parseInt(summary.neutral || 0), parseInt(summary.negative || 0)],
+            labels: ['Positif', 'Netral', 'Negatif'],
+            colors: colors,
+            legend: { position: 'bottom' },
+            dataLabels: { enabled: true },
+            stroke: { width: 0 }
+        });
+        sentimentDonutChart.render();
+
+        const trend = data.trend || [];
+        sentimentTrendChart = new ApexCharts(document.querySelector('#sentimentTrendChart'), {
+            chart: { type: 'area', height: 280, toolbar: { show: false } },
+            series: [
+                { name: 'Positif', data: trend.map(row => parseInt(row.positive || 0)) },
+                { name: 'Netral', data: trend.map(row => parseInt(row.neutral || 0)) },
+                { name: 'Negatif', data: trend.map(row => parseInt(row.negative || 0)) }
+            ],
+            xaxis: { categories: trend.map(row => row.date), labels: { rotate: -30 } },
+            colors: colors,
+            stroke: { curve: 'smooth', width: 3 },
+            fill: { opacity: 0.16 },
+            dataLabels: { enabled: false },
+            grid: { borderColor: '#eef2f6' }
+        });
+        sentimentTrendChart.render();
+
+        const source = data.source_summary || {};
+        const commentSource = source.comment || {};
+        const messageSource = source.message || {};
+        sentimentSourceChart = new ApexCharts(document.querySelector('#sentimentSourceChart'), {
+            chart: { type: 'bar', height: 260, stacked: true, toolbar: { show: false } },
+            series: [
+                { name: 'Positif', data: [parseInt(commentSource.positive || 0), parseInt(messageSource.positive || 0)] },
+                { name: 'Netral', data: [parseInt(commentSource.neutral || 0), parseInt(messageSource.neutral || 0)] },
+                { name: 'Negatif', data: [parseInt(commentSource.negative || 0), parseInt(messageSource.negative || 0)] }
+            ],
+            xaxis: { categories: ['Komentar', 'DM'] },
+            colors: colors,
+            plotOptions: { bar: { borderRadius: 6, columnWidth: '45%' } },
+            dataLabels: { enabled: false },
+            legend: { position: 'bottom' },
+            grid: { borderColor: '#eef2f6' }
+        });
+        sentimentSourceChart.render();
+    }
+
+    function renderSentimentRecent(recent) {
+        const colorMap = {
+            positive: '#22c55e',
+            neutral: '#94a3b8',
+            negative: '#ef4444'
+        };
+        const labelMap = {
+            positive: 'Positif',
+            neutral: 'Netral',
+            negative: 'Negatif'
+        };
+
+        if (!recent.length) {
+            $('#sentimentRecentList').html('<div class="text-muted py-4 text-center">Belum ada teks terbaru.</div>');
+            return;
+        }
+
+        let html = '';
+        recent.forEach(item => {
+            const sentiment = item.sentiment || 'neutral';
+            html += `
+                <div class="border-bottom py-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="badge bg-light text-dark border">${item.source === 'message' ? 'DM' : 'Komentar'}</span>
+                        <span class="small fw-bold" style="color:${colorMap[sentiment]};">
+                            <span class="sentiment-dot me-1" style="background:${colorMap[sentiment]};"></span>${labelMap[sentiment]}
+                        </span>
+                    </div>
+                    <div class="text-dark small mb-1">${esc(item.text)}</div>
+                    <div class="text-muted" style="font-size:0.75rem;">${formatTime(item.created_at)}</div>
+                </div>`;
+        });
+        $('#sentimentRecentList').html(html);
+    }
+
+    // ---- WEBHOOK HEALTH & EXPORT ----
+    function loadWebhookHealth() {
+        if (!activeIgUserId) return;
+        $.getJSON(API_BASE + 'get_webhook_health?ig_user_id=' + encodeURIComponent(activeIgUserId), function(response) {
+            if (!response.success) {
+                alertify.error(response.error || 'Gagal memuat monitoring.');
+                return;
+            }
+
+            const d = response.data || {};
+            const tokenClass = d.token_status === 'ok' ? 'text-success' : (d.token_status === 'warning' ? 'text-warning' : 'text-danger');
+            $('#healthWebhookStatus').text(d.webhook_status === 'receiving' ? 'Menerima event' : 'Belum ada event').attr('class', d.webhook_status === 'receiving' ? 'fw-bold mb-1 text-success' : 'fw-bold mb-1 text-warning');
+            $('#healthLastEvent').text('Event terakhir: ' + (d.last_event_at || '-'));
+            $('#healthTokenStatus').text(d.token_status + (d.days_left !== null ? ` (${d.days_left} hari)` : '')).attr('class', 'fw-bold mb-1 ' + tokenClass);
+            $('#healthTokenExpires').text('Expired: ' + (d.expires_at || '-'));
+
+            if (d.token_status === 'warning' || d.token_status === 'expired') {
+                alertify.warning('Token akun ini perlu diperhatikan. Hubungkan ulang akun jika sudah expired atau hampir expired.');
+            }
+
+            const counts = d.event_counts || [];
+            if (!counts.length) {
+                $('#healthEventCounts').html('<div class="col-12 text-muted">Belum ada event webhook.</div>');
+                return;
+            }
+
+            let html = '';
+            counts.forEach(item => {
+                html += `<div class="col-md-3 col-6"><div class="bg-light rounded-3 p-3 border"><span class="small text-muted d-block">${esc(item.event_type || '-')}</span><strong>${item.total}</strong></div></div>`;
+            });
+            $('#healthEventCounts').html(html);
+        });
+    }
+
+    function exportData(type) {
+        if (!activeIgUserId) return;
+        window.location.href = API_BASE + 'export_data?' + $.param({ ig_user_id: activeIgUserId, type: type });
+    }
+
+    function refreshAccessToken() {
+        if (!activeIgUserId) return;
+        alertify.message('Mencoba refresh token...');
+        $.getJSON(API_BASE + 'refresh_access_token?ig_user_id=' + encodeURIComponent(activeIgUserId), function(response) {
+            if (response.success) {
+                alertify.success('Token berhasil di-refresh.');
+                loadWebhookHealth();
+            } else {
+                alertify.error(response.error || 'Gagal refresh token. Hubungkan ulang akun jika token sudah tidak valid.');
+            }
+        });
+    }
+
+    // ---- REPLY TEMPLATES ----
+    function loadReplyTemplates() {
+        if (!activeIgUserId) return;
+        $.getJSON(API_BASE + 'get_reply_templates?ig_user_id=' + encodeURIComponent(activeIgUserId), function(response) {
+            if (!response.success) {
+                $('#replyTemplatesList').html('<div class="text-danger">Gagal memuat template.</div>');
+                return;
+            }
+
+            const templates = response.data || [];
+            replyTemplateCache = {};
+            if (!templates.length) {
+                $('#replyTemplatesList').html('<div class="text-muted text-center py-5">Belum ada template balasan.</div>');
+                return;
+            }
+
+            let html = '';
+            templates.forEach(t => {
+                replyTemplateCache[t.id] = t;
+                html += `
+                    <div class="border-bottom py-3">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div>
+                                <h6 class="fw-bold mb-1">${esc(t.name)}</h6>
+                                <div class="small text-muted mb-2">Channel: ${esc(t.channel)} · Keyword: ${esc(t.keyword || '-')}</div>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-secondary" onclick="editReplyTemplate(${t.id})">Edit</button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="copyReplyTextById(${t.id})">Copy</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteReplyTemplate(${t.id})">Hapus</button>
+                            </div>
+                        </div>
+                        <div class="small text-dark">${esc(t.response_text)}</div>
+                        <div class="mt-2">
+                            <span class="badge ${t.is_active == 1 ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'}">${t.is_active == 1 ? 'Aktif' : 'Nonaktif'}</span>
+                            <span class="badge ${t.auto_reply == 1 ? 'bg-primary-subtle text-primary' : 'bg-light text-muted border'}">${t.auto_reply == 1 ? 'Auto-reply ON' : 'Manual'}</span>
+                        </div>
+                    </div>`;
+            });
+            $('#replyTemplatesList').html(html);
+        });
+    }
+
+    function saveReplyTemplate() {
+        if (!activeIgUserId) return;
+        $.post(API_BASE + 'save_reply_template', {
+            id: $('#replyTemplateId').val(),
+            ig_user_id: activeIgUserId,
+            name: $('#replyTemplateName').val(),
+            channel: $('#replyTemplateChannel').val(),
+            keyword: $('#replyTemplateKeyword').val(),
+            response_text: $('#replyTemplateText').val(),
+            is_active: $('#replyTemplateActive').is(':checked') ? 1 : 0,
+            auto_reply: $('#replyTemplateAuto').is(':checked') ? 1 : 0
+        }, function(response) {
+            if (response.success) {
+                alertify.success('Template balasan tersimpan.');
+                resetReplyTemplateForm();
+                loadReplyTemplates();
+            } else {
+                alertify.error(response.error || 'Gagal menyimpan template.');
+            }
+        }, 'json');
+    }
+
+    function editReplyTemplate(id) {
+        const t = replyTemplateCache[id];
+        if (!t) return;
+        $('#replyTemplateId').val(t.id);
+        $('#replyTemplateName').val(t.name);
+        $('#replyTemplateChannel').val(t.channel);
+        $('#replyTemplateKeyword').val(t.keyword);
+        $('#replyTemplateText').val(t.response_text);
+        $('#replyTemplateActive').prop('checked', t.is_active == 1);
+        $('#replyTemplateAuto').prop('checked', t.auto_reply == 1);
+    }
+
+    function resetReplyTemplateForm() {
+        $('#replyTemplateId').val('');
+        $('#replyTemplateName').val('');
+        $('#replyTemplateChannel').val('all');
+        $('#replyTemplateKeyword').val('');
+        $('#replyTemplateText').val('');
+        $('#replyTemplateActive').prop('checked', true);
+        $('#replyTemplateAuto').prop('checked', false);
+    }
+
+    function deleteReplyTemplate(id) {
+        alertify.confirm('Hapus Template', 'Hapus template balasan ini?',
+            function() {
+                $.getJSON(API_BASE + 'delete_reply_template?' + $.param({ ig_user_id: activeIgUserId, id: id }), function(response) {
+                    if (response.success) {
+                        alertify.success('Template dihapus.');
+                        loadReplyTemplates();
+                    } else {
+                        alertify.error(response.error || 'Gagal menghapus template.');
+                    }
+                });
+            },
+            function() {}
+        );
+    }
+
+    function copyReplyText(text) {
+        navigator.clipboard.writeText(text || '').then(function() {
+            alertify.success('Isi balasan disalin.');
+        });
+    }
+
+    function copyReplyTextById(id) {
+        const t = replyTemplateCache[id];
+        copyReplyText(t ? t.response_text : '');
+    }
+
     // ---- FETCH MEDIA API CALL ----
     function fetchMedia(igUserId) {
         alertify.message('📥 Mengambil profil & media terbaru dari Instagram...');
         $.getJSON(API_BASE + 'fetch_media?ig_user_id=' + igUserId, function(response) {
             if (response.success) {
-                alertify.success(`✅ Sukses! Data profil & ${response.count} postingan disinkronkan.`);
+                alertify.success(`✅ Sukses! ${response.count} postingan & ${response.comments_count || 0} komentar disinkronkan.`);
                 loadMedia();
                 loadComments();
                 loadStats();
@@ -989,10 +1513,12 @@
     // ---- REFRESH ALL DATA ----
     function refreshAll() {
         loadStats();
-        loadWebhookLogs();
         loadComments();
         loadMedia();
         loadMessages();
+        if ($('#tab-sentiment').is(':visible')) {
+            loadSentimentAnalysis();
+        }
     }
 
     // ---- AUTO REFRESH TICKER ----
@@ -1000,9 +1526,11 @@
         stopAutoRefresh();
         autoRefreshTimer = setInterval(function() {
             loadStats();
-            loadWebhookLogs();
             loadComments();
             loadMessages();
+            if ($('#tab-sentiment').is(':visible')) {
+                loadSentimentAnalysis();
+            }
         }, REFRESH_INTERVAL);
     }
 
@@ -1015,7 +1543,7 @@
 
     // ---- HELPERS ----
     function esc(str) {
-        if (!str) return '';
+        if (str === null || str === undefined) return '';
         return $('<div/>').text(str).html();
     }
 

@@ -318,6 +318,23 @@ class Dashboard extends CI_Controller
         exit;
     }
 
+    private function assertAccountAccess($igUserId)
+    {
+        $my_ids = $this->get_my_ig_ids();
+        if (!$igUserId) {
+            $this->json_res(['success' => false, 'error' => 'ig_user_id required']);
+        }
+        if ($my_ids !== null && !in_array($igUserId, $my_ids)) {
+            $this->json_res(['success' => false, 'error' => 'Unauthorized']);
+        }
+    }
+
+    private function getCurrentUserEmail()
+    {
+        $userData = useraAuthData();
+        return $userData['email'] ?? null;
+    }
+
     public function get_stats()
     {
         try {
@@ -351,8 +368,11 @@ class Dashboard extends CI_Controller
             // Total comments
             $this->db->from('comments');
             if ($filter_ids !== null) {
-                $this->db->join('media', 'media.media_id = comments.media_id');
-                $this->db->where_in('media.ig_user_id', $filter_ids);
+                $this->db->join('media', 'media.media_id = comments.media_id', 'left');
+                $this->db->group_start();
+                $this->db->where_in('comments.ig_user_id', $filter_ids);
+                $this->db->or_where_in('media.ig_user_id', $filter_ids);
+                $this->db->group_end();
             }
             $stats['total_comments'] = $this->db->count_all_results();
 
@@ -360,7 +380,8 @@ class Dashboard extends CI_Controller
             $this->db->from('messages');
             if ($filter_ids !== null) {
                 $this->db->group_start();
-                $this->db->where_in('sender_id', $filter_ids);
+                $this->db->where_in('ig_user_id', $filter_ids);
+                $this->db->or_where_in('sender_id', $filter_ids);
                 $this->db->or_where_in('recipient_id', $filter_ids);
                 $this->db->group_end();
             }
@@ -435,18 +456,24 @@ class Dashboard extends CI_Controller
             $my_ids = $this->get_my_ig_ids();
             $igUserId = $this->input->get('ig_user_id');
 
-            $this->db->select('comments.*, media.ig_user_id, access_tokens.username as target_ig_username');
+            $this->db->select('comments.*, COALESCE(comments.ig_user_id, media.ig_user_id) as target_ig_user_id, access_tokens.username as target_ig_username');
             $this->db->from('comments');
             $this->db->join('media', 'media.media_id = comments.media_id', 'left');
-            $this->db->join('access_tokens', 'access_tokens.ig_user_id = media.ig_user_id', 'left');
+            $this->db->join('access_tokens', 'access_tokens.ig_user_id = COALESCE(comments.ig_user_id, media.ig_user_id)', 'left');
 
             if ($igUserId) {
                 if ($my_ids !== null && !in_array($igUserId, $my_ids)) {
                     $this->json_res(['success' => false, 'error' => 'Unauthorized']);
                 }
-                $this->db->where('media.ig_user_id', $igUserId);
+                $this->db->group_start();
+                $this->db->where('comments.ig_user_id', $igUserId);
+                $this->db->or_where('media.ig_user_id', $igUserId);
+                $this->db->group_end();
             } elseif ($my_ids !== null) {
-                $this->db->where_in('media.ig_user_id', $my_ids);
+                $this->db->group_start();
+                $this->db->where_in('comments.ig_user_id', $my_ids);
+                $this->db->or_where_in('media.ig_user_id', $my_ids);
+                $this->db->group_end();
             }
 
             $this->db->order_by('comments.created_at', 'DESC')->limit($limit);
@@ -455,6 +482,350 @@ class Dashboard extends CI_Controller
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
         }
+    }
+
+    private function analyzeSentimentText($text)
+    {
+        $text = strtolower((string)$text);
+        $positiveWords = [
+            'bagus', 'baik', 'mantap', 'keren', 'suka', 'senang', 'puas', 'top',
+            'terbaik', 'recommended', 'rekomendasi', 'cepat', 'ramah', 'mudah',
+            'hebat', 'wow', 'love', 'thanks', 'terima kasih', 'makasih', 'membantu',
+            'berhasil', 'aman', 'nyaman', 'worth', 'perfect', 'good', 'great'
+        ];
+        $negativeWords = [
+            'buruk', 'jelek', 'kecewa', 'komplain', 'lambat', 'lama', 'mahal',
+            'susah', 'sulit', 'error', 'gagal', 'rusak', 'parah', 'benci',
+            'tidak puas', 'ga puas', 'gak puas', 'nggak puas', 'kurang', 'masalah',
+            'bohong', 'tipu', 'spam', 'cancel', 'bad', 'worst'
+        ];
+
+        $positiveScore = 0;
+        $negativeScore = 0;
+
+        foreach ($positiveWords as $word) {
+            if (strpos($text, $word) !== false) {
+                $positiveScore++;
+            }
+        }
+        foreach ($negativeWords as $word) {
+            if (strpos($text, $word) !== false) {
+                $negativeScore++;
+            }
+        }
+
+        if ($positiveScore > $negativeScore) {
+            return 'positive';
+        }
+        if ($negativeScore > $positiveScore) {
+            return 'negative';
+        }
+        return 'neutral';
+    }
+
+    public function get_sentiment_analysis()
+    {
+        try {
+            $igUserId = $this->input->get('ig_user_id');
+            $sourceFilter = $this->input->get('source') ?: 'all';
+            $dateFrom = $this->input->get('date_from');
+            $dateTo = $this->input->get('date_to');
+            $mediaId = $this->input->get('media_id');
+            $analyzer = $this->input->get('analyzer') ?: 'local';
+
+            $this->assertAccountAccess($igUserId);
+
+            $comments = [];
+            if ($sourceFilter === 'all' || $sourceFilter === 'comment') {
+                $this->db->select("'comment' as source, comments.text as text, comments.created_at", false);
+                $this->db->from('comments');
+                $this->db->join('media', 'media.media_id = comments.media_id', 'left');
+                $this->db->group_start();
+                $this->db->where('comments.ig_user_id', $igUserId);
+                $this->db->or_where('media.ig_user_id', $igUserId);
+                $this->db->group_end();
+                if ($mediaId) {
+                    $this->db->where('comments.media_id', $mediaId);
+                }
+                if ($dateFrom) {
+                    $this->db->where('DATE(comments.created_at) >= ' . $this->db->escape($dateFrom), null, false);
+                }
+                if ($dateTo) {
+                    $this->db->where('DATE(comments.created_at) <= ' . $this->db->escape($dateTo), null, false);
+                }
+                $this->db->where('comments.text IS NOT NULL', null, false);
+                $comments = $this->db->get()->result_array();
+            }
+
+            $messages = [];
+            if (!$mediaId && ($sourceFilter === 'all' || $sourceFilter === 'message')) {
+                $this->db->select("'message' as source, messages.message_text as text, messages.created_at", false);
+                $this->db->from('messages');
+                $this->db->group_start();
+                $this->db->where('messages.ig_user_id', $igUserId);
+                $this->db->or_where('messages.sender_id', $igUserId);
+                $this->db->or_where('messages.recipient_id', $igUserId);
+                $this->db->group_end();
+                if ($dateFrom) {
+                    $this->db->where('DATE(messages.created_at) >= ' . $this->db->escape($dateFrom), null, false);
+                }
+                if ($dateTo) {
+                    $this->db->where('DATE(messages.created_at) <= ' . $this->db->escape($dateTo), null, false);
+                }
+                $this->db->where('messages.message_text IS NOT NULL', null, false);
+                $messages = $this->db->get()->result_array();
+            }
+
+            $items = array_merge($comments, $messages);
+            $summary = [
+                'positive' => 0,
+                'neutral' => 0,
+                'negative' => 0,
+                'total' => 0,
+            ];
+            $sourceSummary = [
+                'comment' => ['positive' => 0, 'neutral' => 0, 'negative' => 0, 'total' => 0],
+                'message' => ['positive' => 0, 'neutral' => 0, 'negative' => 0, 'total' => 0],
+            ];
+            $trend = [];
+            $recent = [];
+
+            foreach ($items as $item) {
+                $text = trim((string)($item['text'] ?? ''));
+                if ($text === '') {
+                    continue;
+                }
+
+                $sentiment = $this->analyzeSentimentText($text);
+                $source = $item['source'] === 'message' ? 'message' : 'comment';
+                $dateKey = date('Y-m-d', strtotime($item['created_at'] ?? date('Y-m-d H:i:s')));
+
+                $summary[$sentiment]++;
+                $summary['total']++;
+                $sourceSummary[$source][$sentiment]++;
+                $sourceSummary[$source]['total']++;
+
+                if (!isset($trend[$dateKey])) {
+                    $trend[$dateKey] = ['date' => $dateKey, 'positive' => 0, 'neutral' => 0, 'negative' => 0];
+                }
+                $trend[$dateKey][$sentiment]++;
+
+                $recent[] = [
+                    'source' => $source,
+                    'sentiment' => $sentiment,
+                    'text' => substr($text, 0, 160),
+                    'created_at' => $item['created_at'],
+                ];
+            }
+
+            ksort($trend);
+            usort($recent, function ($a, $b) {
+                return strtotime($b['created_at']) - strtotime($a['created_at']);
+            });
+
+            $this->json_res([
+                'success' => true,
+                'data' => [
+                    'summary' => $summary,
+                    'source_summary' => $sourceSummary,
+                    'trend' => array_values($trend),
+                    'recent' => array_slice($recent, 0, 8),
+                    'analyzer' => $analyzer === 'ai' ? 'ai-ready-fallback-local' : 'local-keyword',
+                ]
+            ]);
+        } catch (Exception $e) {
+            $this->json_res(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function get_webhook_health()
+    {
+        try {
+            $igUserId = $this->input->get('ig_user_id');
+            $this->assertAccountAccess($igUserId);
+
+            $account = $this->db->get_where('access_tokens', ['ig_user_id' => $igUserId])->row_array();
+            $latestWebhook = $this->db->where('entry_id', $igUserId)->order_by('created_at', 'DESC')->limit(1)->get('webhook_logs')->row_array();
+            $eventCounts = $this->db->select('event_type, COUNT(*) as total')
+                ->where('entry_id', $igUserId)
+                ->group_by('event_type')
+                ->order_by('total', 'DESC')
+                ->get('webhook_logs')
+                ->result_array();
+
+            $expiresAt = $account['expires_at'] ?? null;
+            $daysLeft = null;
+            $tokenStatus = 'unknown';
+            if ($expiresAt) {
+                $daysLeft = floor((strtotime($expiresAt) - time()) / 86400);
+                if ($daysLeft < 0) {
+                    $tokenStatus = 'expired';
+                } elseif ($daysLeft <= 7) {
+                    $tokenStatus = 'warning';
+                } else {
+                    $tokenStatus = 'ok';
+                }
+            }
+
+            $lastEventAt = $latestWebhook['created_at'] ?? null;
+            $webhookStatus = $lastEventAt ? 'receiving' : 'no_events';
+            $minutesSinceLastEvent = $lastEventAt ? floor((time() - strtotime($lastEventAt)) / 60) : null;
+
+            $this->json_res([
+                'success' => true,
+                'data' => [
+                    'webhook_status' => $webhookStatus,
+                    'last_event_at' => $lastEventAt ?: '-',
+                    'minutes_since_last_event' => $minutesSinceLastEvent,
+                    'event_counts' => $eventCounts,
+                    'token_status' => $tokenStatus,
+                    'expires_at' => $expiresAt,
+                    'days_left' => $daysLeft,
+                ]
+            ]);
+        } catch (Exception $e) {
+            $this->json_res(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function refresh_access_token()
+    {
+        try {
+            $igUserId = $this->input->get('ig_user_id');
+            $this->assertAccountAccess($igUserId);
+
+            $account = $this->db->select('access_token')->get_where('access_tokens', ['ig_user_id' => $igUserId])->row_array();
+            if (!$account) {
+                $this->json_res(['success' => false, 'error' => 'Token not found']);
+            }
+
+            $response = callGraphAPI(IG_GRAPH_API_BASE . '/refresh_access_token', 'GET', [
+                'grant_type' => 'ig_refresh_token',
+                'access_token' => $account['access_token'],
+            ]);
+
+            if (isset($response['error'])) {
+                $this->json_res(['success' => false, 'error' => $response['error']['message'] ?? 'Gagal refresh token']);
+            }
+
+            $accessToken = $response['access_token'] ?? $account['access_token'];
+            $expiresIn = $response['expires_in'] ?? (60 * 24 * 60 * 60);
+            $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
+
+            $this->db->where('ig_user_id', $igUserId)->update('access_tokens', [
+                'access_token' => $accessToken,
+                'expires_at' => $expiresAt,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            $this->json_res(['success' => true, 'expires_at' => $expiresAt]);
+        } catch (Exception $e) {
+            $this->json_res(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function get_reply_templates()
+    {
+        try {
+            $igUserId = $this->input->get('ig_user_id');
+            $this->assertAccountAccess($igUserId);
+
+            $templates = $this->db->where('ig_user_id', $igUserId)
+                ->order_by('updated_at', 'DESC')
+                ->get('reply_templates')
+                ->result_array();
+
+            $this->json_res(['success' => true, 'data' => $templates]);
+        } catch (Exception $e) {
+            $this->json_res(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function save_reply_template()
+    {
+        try {
+            $igUserId = $this->input->post('ig_user_id');
+            $this->assertAccountAccess($igUserId);
+
+            $id = (int)($this->input->post('id') ?? 0);
+            $data = [
+                'user_email' => $this->getCurrentUserEmail(),
+                'ig_user_id' => $igUserId,
+                'name' => trim((string)$this->input->post('name')),
+                'channel' => $this->input->post('channel') ?: 'all',
+                'keyword' => trim((string)$this->input->post('keyword')),
+                'response_text' => trim((string)$this->input->post('response_text')),
+                'is_active' => (int)($this->input->post('is_active') ?? 1),
+                'auto_reply' => (int)($this->input->post('auto_reply') ?? 0),
+            ];
+
+            if ($data['name'] === '' || $data['response_text'] === '') {
+                $this->json_res(['success' => false, 'error' => 'Nama template dan isi balasan wajib diisi.']);
+            }
+
+            if ($id > 0) {
+                $this->db->where('id', $id)->where('ig_user_id', $igUserId)->update('reply_templates', $data);
+            } else {
+                $data['created_at'] = date('Y-m-d H:i:s');
+                $this->db->insert('reply_templates', $data);
+                $id = $this->db->insert_id();
+            }
+
+            $this->json_res(['success' => true, 'id' => $id]);
+        } catch (Exception $e) {
+            $this->json_res(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function delete_reply_template()
+    {
+        try {
+            $igUserId = $this->input->get('ig_user_id');
+            $id = (int)$this->input->get('id');
+            $this->assertAccountAccess($igUserId);
+            $this->db->where('id', $id)->where('ig_user_id', $igUserId)->delete('reply_templates');
+            $this->json_res(['success' => true]);
+        } catch (Exception $e) {
+            $this->json_res(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function export_data()
+    {
+        $igUserId = $this->input->get('ig_user_id');
+        $type = $this->input->get('type') ?: 'comments';
+        $this->assertAccountAccess($igUserId);
+
+        $filename = $type . '_' . $igUserId . '_' . date('Ymd_His') . '.csv';
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        $out = fopen('php://output', 'w');
+
+        if ($type === 'messages') {
+            fputcsv($out, ['id', 'message_id', 'ig_user_id', 'sender_id', 'recipient_id', 'message_text', 'created_at']);
+            $rows = $this->db->group_start()->where('ig_user_id', $igUserId)->or_where('sender_id', $igUserId)->or_where('recipient_id', $igUserId)->group_end()
+                ->order_by('created_at', 'DESC')->get('messages')->result_array();
+            foreach ($rows as $row) {
+                fputcsv($out, [$row['id'], $row['message_id'], $row['ig_user_id'], $row['sender_id'], $row['recipient_id'], $row['message_text'], $row['created_at']]);
+            }
+        } elseif ($type === 'webhooks') {
+            fputcsv($out, ['id', 'object', 'event_type', 'field', 'value', 'created_at']);
+            $rows = $this->db->where('entry_id', $igUserId)->order_by('created_at', 'DESC')->get('webhook_logs')->result_array();
+            foreach ($rows as $row) {
+                fputcsv($out, [$row['id'], $row['object'], $row['event_type'], $row['field'], $row['value'], $row['created_at']]);
+            }
+        } else {
+            fputcsv($out, ['id', 'comment_id', 'media_id', 'from_username', 'text', 'sentiment', 'created_at']);
+            $this->db->select('comments.*')->from('comments')->join('media', 'media.media_id = comments.media_id', 'left');
+            $this->db->group_start()->where('comments.ig_user_id', $igUserId)->or_where('media.ig_user_id', $igUserId)->group_end();
+            $rows = $this->db->order_by('comments.created_at', 'DESC')->get()->result_array();
+            foreach ($rows as $row) {
+                fputcsv($out, [$row['id'], $row['comment_id'], $row['media_id'], $row['from_username'], $row['text'], $this->analyzeSentimentText($row['text']), $row['created_at']]);
+            }
+        }
+
+        fclose($out);
+        exit;
     }
 
     public function get_messages()
@@ -476,12 +847,14 @@ class Dashboard extends CI_Controller
                     $this->json_res(['success' => false, 'error' => 'Unauthorized']);
                 }
                 $this->db->group_start();
-                $this->db->where('messages.sender_id', $igUserId);
+                $this->db->where('messages.ig_user_id', $igUserId);
+                $this->db->or_where('messages.sender_id', $igUserId);
                 $this->db->or_where('messages.recipient_id', $igUserId);
                 $this->db->group_end();
             } elseif ($my_ids !== null) {
                 $this->db->group_start();
-                $this->db->where_in('messages.sender_id', $my_ids);
+                $this->db->where_in('messages.ig_user_id', $my_ids);
+                $this->db->or_where_in('messages.sender_id', $my_ids);
                 $this->db->or_where_in('messages.recipient_id', $my_ids);
                 $this->db->group_end();
             }
@@ -560,6 +933,7 @@ class Dashboard extends CI_Controller
 
             // Simpan/update media
             $mediaList = $response['data'] ?? [];
+            $syncedComments = 0;
             foreach ($mediaList as $media) {
                 $media_id = $media['id'];
                 $exist = $this->db->get_where('media', ['media_id' => $media_id])->row_array();
@@ -583,9 +957,43 @@ class Dashboard extends CI_Controller
                     $mediaData['created_at'] = date('Y-m-d H:i:s');
                     $this->db->insert('media', $mediaData);
                 }
+
+                $commentsResponse = callGraphAPI(IG_GRAPH_API_BASE . '/' . $media_id . '/comments', 'GET', [
+                    'access_token' => $token,
+                    'fields' => 'id,text,username,timestamp,like_count',
+                    'limit' => 50,
+                ]);
+
+                if (!isset($commentsResponse['error'])) {
+                    foreach (($commentsResponse['data'] ?? []) as $comment) {
+                        $comment_id = $comment['id'] ?? null;
+                        if (!$comment_id) {
+                            continue;
+                        }
+
+                        $commentData = [
+                            'comment_id' => $comment_id,
+                            'ig_user_id' => $igUserId,
+                            'media_id' => $media_id,
+                            'from_username' => $comment['username'] ?? null,
+                            'text' => $comment['text'] ?? '',
+                            'timestamp' => isset($comment['timestamp']) ? date('Y-m-d H:i:s', strtotime($comment['timestamp'])) : null,
+                            'is_from_webhook' => 0
+                        ];
+
+                        $commentExist = $this->db->get_where('comments', ['comment_id' => $comment_id])->row_array();
+                        if ($commentExist) {
+                            $this->db->where('comment_id', $comment_id)->update('comments', $commentData);
+                        } else {
+                            $commentData['created_at'] = date('Y-m-d H:i:s');
+                            $this->db->insert('comments', $commentData);
+                        }
+                        $syncedComments++;
+                    }
+                }
             }
 
-            $this->json_res(['success' => true, 'data' => $mediaList, 'count' => count($mediaList)]);
+            $this->json_res(['success' => true, 'data' => $mediaList, 'count' => count($mediaList), 'comments_count' => $syncedComments]);
         } catch (Exception $e) {
             $this->json_res(['success' => false, 'error' => $e->getMessage()]);
         }
@@ -623,6 +1031,7 @@ class Dashboard extends CI_Controller
                 
                 $commentData = [
                     'comment_id' => $comment_id,
+                    'ig_user_id' => $igUserId,
                     'media_id' => $mediaId,
                     'from_username' => $comment['username'] ?? null,
                     'text' => $comment['text'] ?? '',

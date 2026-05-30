@@ -9,9 +9,13 @@ USE `instagram_api`;
 -- Tabel untuk menyimpan access token Instagram
 CREATE TABLE IF NOT EXISTS `access_tokens` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_email` VARCHAR(255) DEFAULT NULL COMMENT 'Email user pemilik koneksi',
     `ig_user_id` VARCHAR(100) NOT NULL COMMENT 'Instagram User ID',
     `username` VARCHAR(255) DEFAULT NULL COMMENT 'Instagram Username',
     `name` VARCHAR(255) DEFAULT NULL COMMENT 'Nama akun',
+    `profile_picture_url` TEXT DEFAULT NULL COMMENT 'URL foto profil Instagram',
+    `followers_count` INT DEFAULT 0 COMMENT 'Jumlah followers terakhir',
+    `media_count` INT DEFAULT 0 COMMENT 'Jumlah media terakhir',
     `access_token` TEXT NOT NULL COMMENT 'Access Token dari OAuth',
     `token_type` VARCHAR(50) DEFAULT 'bearer',
     `expires_at` DATETIME DEFAULT NULL COMMENT 'Kapan token expired',
@@ -38,6 +42,7 @@ CREATE TABLE IF NOT EXISTS `webhook_logs` (
 CREATE TABLE IF NOT EXISTS `comments` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `comment_id` VARCHAR(100) NOT NULL COMMENT 'ID komentar dari Instagram',
+    `ig_user_id` VARCHAR(100) DEFAULT NULL COMMENT 'Instagram User ID pemilik akun target',
     `media_id` VARCHAR(100) DEFAULT NULL COMMENT 'ID media/post yang dikomentari',
     `parent_id` VARCHAR(100) DEFAULT NULL COMMENT 'ID komentar parent (jika reply)',
     `from_id` VARCHAR(100) DEFAULT NULL COMMENT 'ID user yang komentar',
@@ -70,6 +75,7 @@ CREATE TABLE IF NOT EXISTS `media` (
 CREATE TABLE IF NOT EXISTS `messages` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `message_id` VARCHAR(100) NOT NULL,
+    `ig_user_id` VARCHAR(100) DEFAULT NULL COMMENT 'Instagram User ID pemilik akun target',
     `sender_id` VARCHAR(100) DEFAULT NULL,
     `recipient_id` VARCHAR(100) DEFAULT NULL,
     `message_text` TEXT DEFAULT NULL,
@@ -79,3 +85,31 @@ CREATE TABLE IF NOT EXISTS `messages` (
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY `uk_message_id` (`message_id`)
 ) ENGINE=InnoDB COMMENT='Data pesan/DM Instagram';
+
+-- Tabel template balasan cepat dan auto-reply
+CREATE TABLE IF NOT EXISTS `reply_templates` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_email` VARCHAR(255) DEFAULT NULL,
+    `ig_user_id` VARCHAR(100) DEFAULT NULL,
+    `name` VARCHAR(120) NOT NULL,
+    `channel` VARCHAR(20) DEFAULT 'all',
+    `keyword` VARCHAR(120) DEFAULT NULL,
+    `response_text` TEXT NOT NULL,
+    `is_active` TINYINT(1) DEFAULT 1,
+    `auto_reply` TINYINT(1) DEFAULT 0,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB COMMENT='Template balasan cepat dan aturan auto-reply';
+
+-- Tabel log pengiriman auto-reply
+CREATE TABLE IF NOT EXISTS `auto_reply_logs` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `template_id` INT DEFAULT NULL,
+    `ig_user_id` VARCHAR(100) DEFAULT NULL,
+    `channel` VARCHAR(20) DEFAULT NULL,
+    `target_id` VARCHAR(100) DEFAULT NULL,
+    `request_payload` JSON DEFAULT NULL,
+    `response_payload` JSON DEFAULT NULL,
+    `status` VARCHAR(30) DEFAULT 'pending',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB COMMENT='Log upaya pengiriman auto-reply';
