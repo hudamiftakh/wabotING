@@ -30,7 +30,8 @@ class Webhook extends CI_Controller
 
     private function igGraphUrl($path)
     {
-        return rtrim(IG_GRAPH_API_BASE, '/') . '/' . IG_GRAPH_API_VERSION . '/' . ltrim($path, '/');
+        // Instagram Graph API (graph.instagram.com) does NOT support versioned endpoints.
+        return rtrim(IG_GRAPH_API_BASE, '/') . '/' . ltrim($path, '/');
     }
 
     /**

@@ -204,7 +204,10 @@ class Dashboard extends CI_Controller
 
     private function igGraphUrl($path)
     {
-        return rtrim(IG_GRAPH_API_BASE, '/') . '/' . IG_GRAPH_API_VERSION . '/' . ltrim($path, '/');
+        // Instagram Graph API (graph.instagram.com) does NOT support versioned endpoints.
+        // Versioned endpoints (e.g. /v21.0/) only work on graph.facebook.com.
+        // Using unversioned URLs: https://graph.instagram.com/me/media
+        return rtrim(IG_GRAPH_API_BASE, '/') . '/' . ltrim($path, '/');
     }
 
     private function fetchInstagramProfile($accessToken, $igUserId)
