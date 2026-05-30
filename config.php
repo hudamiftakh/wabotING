@@ -26,7 +26,7 @@ define('WEBHOOK_VERIFY_TOKEN', 'token_verifikasi_instagram_2024');
 // maka kita harus pakai Instagram Login flow
 define('IG_GRAPH_API_VERSION', 'v21.0');
 define('IG_GRAPH_API_BASE', 'https://graph.instagram.com');
-define('IG_AUTH_URL', 'https://www.instagram.com/oauth/authorize');      // OAuth authorize
+define('IG_AUTH_URL', 'https://api.instagram.com/oauth/authorize');      // OAuth authorize
 define('IG_TOKEN_URL', 'https://api.instagram.com/oauth/access_token');  // Tukar code→token
 define('FB_GRAPH_API_BASE', 'https://graph.facebook.com/' . IG_GRAPH_API_VERSION);
 
