@@ -518,6 +518,8 @@ async function loadMedia() {
 }
 
 // ---- LOAD MESSAGES ----
+let latestMessageId = null;
+
 async function loadMessages() {
     try {
         const res = await fetch('api_endpoint.php?action=get_messages&limit=30');
@@ -531,6 +533,20 @@ async function loadMessages() {
             </td></tr>`;
             return;
         }
+
+        // Cek pesan baru jika ini bukan load pertama kali
+        if (latestMessageId !== null) {
+            // Urutkan dari terlama ke terbaru agar notifikasi muncul berurutan
+            const newMessages = json.data.filter(m => parseInt(m.id) > latestMessageId).reverse();
+            newMessages.forEach(m => {
+                const senderName = m.sender_id ? m.sender_id.substring(0, 15) : 'Pengguna';
+                const snippet = m.message_text.length > 40 ? m.message_text.substring(0, 40) + '...' : m.message_text;
+                showToast(`✉️ Pesan baru dari ${senderName}: "${snippet}"`);
+            });
+        }
+        
+        // Update ID pesan terbaru
+        latestMessageId = parseInt(json.data[0].id);
 
         tbody.innerHTML = json.data.map(m => `<tr>
             <td style="white-space:nowrap">${formatTime(m.created_at)}</td>
@@ -576,6 +592,7 @@ function startAutoRefresh() {
         loadStats();
         loadWebhookLogs();
         loadComments();
+        loadMessages();
     }, REFRESH_INTERVAL);
 }
 
