@@ -321,7 +321,7 @@ class Dashboard extends CI_Controller
         return $response;
     }
 
-    private function fetchInstagramMediaList($accessToken)
+    private function fetchInstagramMediaList($accessToken, $igUserId)
     {
         $fieldSets = [
             'id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count',
@@ -329,23 +329,32 @@ class Dashboard extends CI_Controller
             'id,media_type,media_url,permalink,timestamp',
             'id,media_type,timestamp',
         ];
+        $endpoints = [
+            $this->igGraphUrl('/' . rawurlencode((string)$igUserId) . '/media'),
+            $this->igGraphUrl('/me/media'),
+            IG_GRAPH_API_BASE . '/' . rawurlencode((string)$igUserId) . '/media',
+            IG_GRAPH_API_BASE . '/me/media',
+        ];
 
         $lastResponse = null;
-        foreach ($fieldSets as $fields) {
-            $response = callGraphAPI($this->igGraphUrl('/me/media'), 'GET', [
-                'access_token' => $accessToken,
-                'fields' => $fields,
-                'limit' => 20,
-            ]);
+        foreach ($endpoints as $endpoint) {
+            foreach ($fieldSets as $fields) {
+                $response = callGraphAPI($endpoint, 'GET', [
+                    'access_token' => $accessToken,
+                    'fields' => $fields,
+                    'limit' => 20,
+                ]);
 
-            writeLog('Media Sync Attempt', [
-                'fields' => $fields,
-                'response' => $response,
-            ]);
+                writeLog('Media Sync Attempt', [
+                    'endpoint' => $endpoint,
+                    'fields' => $fields,
+                    'response' => $response,
+                ]);
 
-            $lastResponse = $response;
-            if (is_array($response) && !isset($response['error'])) {
-                return $response;
+                $lastResponse = $response;
+                if (is_array($response) && !isset($response['error'])) {
+                    return $response;
+                }
             }
         }
 
@@ -366,24 +375,31 @@ class Dashboard extends CI_Controller
                 'id,text,timestamp',
                 'id,text',
             ];
+        $endpoints = [
+            $this->igGraphUrl('/' . rawurlencode((string)$mediaId) . '/comments'),
+            IG_GRAPH_API_BASE . '/' . rawurlencode((string)$mediaId) . '/comments',
+        ];
 
         $lastResponse = null;
-        foreach ($fieldSets as $fields) {
-            $response = callGraphAPI($this->igGraphUrl('/' . rawurlencode((string)$mediaId) . '/comments'), 'GET', [
-                'access_token' => $accessToken,
-                'fields' => $fields,
-                'limit' => 50,
-            ]);
+        foreach ($endpoints as $endpoint) {
+            foreach ($fieldSets as $fields) {
+                $response = callGraphAPI($endpoint, 'GET', [
+                    'access_token' => $accessToken,
+                    'fields' => $fields,
+                    'limit' => 50,
+                ]);
 
-            writeLog('Comments Sync Attempt', [
-                'media_id' => $mediaId,
-                'fields' => $fields,
-                'response' => $response,
-            ]);
+                writeLog('Comments Sync Attempt', [
+                    'endpoint' => $endpoint,
+                    'media_id' => $mediaId,
+                    'fields' => $fields,
+                    'response' => $response,
+                ]);
 
-            $lastResponse = $response;
-            if (is_array($response) && !isset($response['error'])) {
-                return $response;
+                $lastResponse = $response;
+                if (is_array($response) && !isset($response['error'])) {
+                    return $response;
+                }
             }
         }
 
@@ -1243,10 +1259,18 @@ class Dashboard extends CI_Controller
             }
 
             // Panggil API
-            $response = $this->fetchInstagramMediaList($token);
+            $response = $this->fetchInstagramMediaList($token, $igUserId);
 
             if (isset($response['error'])) {
-                $this->json_res(['success' => false, 'error' => $response['error']['message']]);
+                writeLog('Media sync failed after all attempts', [
+                    'ig_user_id' => $igUserId,
+                    'response' => $response,
+                ]);
+                $this->json_res([
+                    'success' => false,
+                    'error' => $response['error']['message'] ?? 'Gagal mengambil media Instagram.',
+                    'step' => 'fetch_media',
+                ]);
             }
 
             // Simpan/update media
