@@ -16,7 +16,18 @@ define('DB_PASS', 'jombang2017');
 // ---- KONFIGURASI INSTAGRAM/META APP ----
 define('IG_APP_ID', '1884605762223955');                    // ID Aplikasi Instagram (Untuk Direct IG Login)
 define('IG_APP_SECRET', 'b9772decaec9b2cfa7f827e52bd6e65a'); // Secret Key Instagram
-define('IG_REDIRECT_URI', 'https://ing.wabot.web.id/auth.php');   // ⚠️ Harus dimasukkan ke menu Instagram API > Redirect URIs
+// Deteksi Redirect URI secara dinamis agar selalu sesuai dengan domain/path yang diakses saat ini
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)) ? "https://" : "http://";
+$host = $_SERVER['HTTP_HOST'] ?? 'ing.wabot.web.id';
+$script = $_SERVER['SCRIPT_NAME'] ?? '/auth.php';
+// Ganti backslash dengan forward slash (untuk kompatibilitas Windows)
+$script = str_replace('\\', '/', $script);
+if (basename($script) !== 'auth.php') {
+    $dir = dirname($script);
+    $dir = str_replace('\\', '/', $dir);
+    $script = ($dir === '/' || $dir === '.') ? '/auth.php' : rtrim($dir, '/') . '/auth.php';
+}
+define('IG_REDIRECT_URI', $protocol . $host . $script);   // ⚠️ Harus dimasukkan ke menu Instagram API > Redirect URIs
 
 // Token verifikasi untuk webhook (buat sendiri, bebas apa saja)
 define('WEBHOOK_VERIFY_TOKEN', 'token_verifikasi_instagram_2024');
