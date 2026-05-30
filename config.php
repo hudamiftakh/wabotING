@@ -10,13 +10,13 @@
 // ---- KONFIGURASI DATABASE ----
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'instagram_api');
-define('DB_USER', 'root');
-define('DB_PASS', '123');
+define('DB_USER', 'wabotweb_chatwabot');
+define('DB_PASS', 'jombang2017');
 
 // ---- KONFIGURASI INSTAGRAM/META APP ----
-define('IG_APP_ID', '1884605762223955');                    // ID Aplikasi Instagram
-define('IG_APP_SECRET', 'b9772decaec9b2cfa7f827e52bd6e65a'); // Secret Key
-define('IG_REDIRECT_URI', 'https://wabot.web.id/meta_api/auth.php');   // ⚠️ GANTI! Harus HTTPS & terdaftar di Meta Dashboard
+define('IG_APP_ID', '2496439197475089');                    // ID Aplikasi Meta (Bukan Instagram App ID)
+define('IG_APP_SECRET', '44e7b972c8edfcaebc916ae5c565a4b6'); // Rahasia Aplikasi Meta
+define('IG_REDIRECT_URI', 'https://ing.wabot.web.id/auth.php');   // ⚠️ GANTI! Harus HTTPS & terdaftar di Meta Dashboard
 
 // Token verifikasi untuk webhook (buat sendiri, bebas apa saja)
 define('WEBHOOK_VERIFY_TOKEN', 'token_verifikasi_instagram_2024');
@@ -56,7 +56,6 @@ function getDB()
                 $pdo->exec($sql);
                 $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
             }
-            
         } catch (PDOException $e) {
             die("Koneksi database gagal: " . $e->getMessage());
         }
